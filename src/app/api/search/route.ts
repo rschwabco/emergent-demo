@@ -62,6 +62,9 @@ export async function POST(request: NextRequest) {
         chunkIndex: fields.chunk_index,
         project: parts[0],
         issue: parts[1],
+        tags: Array.isArray(fields.tags) ? fields.tags
+          : Array.isArray(fields[".tags"]) ? fields[".tags"]
+          : [],
       };
     });
 

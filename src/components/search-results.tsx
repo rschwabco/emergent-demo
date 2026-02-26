@@ -34,6 +34,7 @@ export interface SearchHit {
   chunkIndex: number;
   project: string;
   issue: string;
+  tags: string[];
 }
 
 interface ContextTurn {
@@ -150,6 +151,10 @@ function ResultCard({
   };
 
   const handleCardClick = () => {
+    // Ignore click if user was selecting text
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) return;
+
     if (selectionActive) {
       onSelect(hit.id, !selected);
     } else {

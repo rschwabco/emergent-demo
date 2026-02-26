@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
     const hits = matches.map((match: Record<string, unknown>) => {
       const traceId = (match[".trace_id"] as string) || "";
       const parts = traceId.replace(".json", "").split("__");
+      const rawTags = match[".tags"] ?? match["tags"];
       return {
         id: match.id,
         score: match.score,
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
         chunkIndex: match[".content.chunk_index"],
         project: parts[0],
         issue: parts[1],
+        tags: Array.isArray(rawTags) ? rawTags : [],
       };
     });
 
