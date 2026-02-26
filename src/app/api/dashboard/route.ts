@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPineconeClient } from "@/lib/pinecone";
 import { getOpenAIClient } from "@/lib/openai";
 import { PROBES } from "@/lib/explore-probes";
+import { getCachedDashboard, setCachedDashboard } from "@/lib/dashboard-cache";
 
 const INDEX_NAME = "agent-traces-semantic";
 const NAMESPACE = "traces";
@@ -142,8 +143,26 @@ async function generateCrossCuttingInsights(
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const bustCache = url.searchParams.get("bust") === "1";
+
+    if (!bustCache) {
+      const cached = await getCachedDashboard<Record<string, unknown>>();
+      if (cached) {
+        return NextResponse.json(
+          { ...cached, cached: true },
+          {
+            headers: {
+              "Cache-Control":
+                "public, s-maxage=300, stale-while-revalidate=600",
+            },
+          }
+        );
+      }
+    }
+
     const pc = getPineconeClient();
     const idx = pc.index(INDEX_NAME);
     const ns = idx.namespace(NAMESPACE);
@@ -303,14 +322,18 @@ export async function GET() {
       roleDistribution[hit.role] = (roleDistribution[hit.role] ?? 0) + 1;
     }
 
+    const responseData = {
+      totalChunks,
+      crossCuttingInsights,
+      behaviors,
+      projects,
+      roleDistribution,
+    };
+
+    await setCachedDashboard(responseData);
+
     return NextResponse.json(
-      {
-        totalChunks,
-        crossCuttingInsights,
-        behaviors,
-        projects,
-        roleDistribution,
-      },
+      { ...responseData, cached: false },
       {
         headers: {
           "Cache-Control":
