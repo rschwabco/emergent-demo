@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
-
-const INDEX_NAME = "agent-traces-semantic";
-const NAMESPACE = "traces";
+import { getPineconeClient, EMERGENT_DEMO_SEMANTIC_INDEX_NAME, EMERGENT_DEMO_NAMESPACE } from "@/lib/pinecone";
 
 interface TraceChunk {
   turnIndex: number;
@@ -32,8 +29,8 @@ export async function GET(
     }
 
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
-    const ns = idx.namespace(NAMESPACE);
+    const idx = pc.index(EMERGENT_DEMO_SEMANTIC_INDEX_NAME);
+    const ns = idx.namespace(EMERGENT_DEMO_NAMESPACE);
 
     const results = await ns.searchRecords({
       query: {

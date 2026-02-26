@@ -1,17 +1,23 @@
 import { Pinecone } from "@pinecone-database/pinecone";
+import envConfig from "@/../env.json";
+
+export const EMERGENT_DEMO_SEMANTIC_INDEX_NAME = envConfig.semantic_index_name;
+export const EMERGENT_DEMO_NAMESPACE = envConfig.namespace;
+export const EMERGENT_DEMO_HOST = envConfig.host;
+export const EMERGENT_DEMO_API_KEY = envConfig.pinecone_api_key;
 
 let pineconeInstance: Pinecone | null = null;
 
 export function getPineconeClient(): Pinecone {
-  if (!process.env.PINECONE_API_KEY) {
+  if (!envConfig.pinecone_api_key) {
     throw new Error(
-      "PINECONE_API_KEY is not set. Add it to .env.local or your Vercel environment variables."
+      "pinecone_api_key is not set in env.json."
     );
   }
 
   if (!pineconeInstance) {
     pineconeInstance = new Pinecone({
-      apiKey: process.env.PINECONE_API_KEY,
+      apiKey: envConfig.pinecone_api_key,
     });
   }
 

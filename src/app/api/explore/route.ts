@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, EMERGENT_DEMO_SEMANTIC_INDEX_NAME, EMERGENT_DEMO_NAMESPACE } from "@/lib/pinecone";
 import { PROBES } from "@/lib/explore-probes";
-
-const INDEX_NAME = "agent-traces-semantic";
-const NAMESPACE = "traces";
 const HITS_PER_PROBE = 4;
 
 export async function GET() {
   try {
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
-    const ns = idx.namespace(NAMESPACE);
+    const idx = pc.index(EMERGENT_DEMO_SEMANTIC_INDEX_NAME);
+    const ns = idx.namespace(EMERGENT_DEMO_NAMESPACE);
 
     const probeResults = await Promise.all(
       PROBES.map(async (probe) => {

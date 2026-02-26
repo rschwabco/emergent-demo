@@ -15,6 +15,7 @@ import { useTagStore } from "@/hooks/use-tag-store";
 
 export default function Home() {
   const [query, setQuery] = useState("");
+  const [textQuery, setTextQuery] = useState("");
   const [role, setRole] = useState("all");
   const [project, setProject] = useState("all");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -76,15 +77,51 @@ export default function Home() {
     }
   }, []);
 
+  const doTextSearch = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) return;
+    setLoading(true);
+    setSearched(true);
+    setSelectedIds(new Set());
+    try {
+      const body: Record<string, unknown> = {
+        query: searchQuery.trim(),
+        topK: 15,
+      };
+      const filters: Record<string, string> = {};
+      if (roleRef.current !== "all") filters.role = roleRef.current;
+      if (projectRef.current !== "all") filters.project = projectRef.current;
+      if (Object.keys(filters).length > 0) body.filters = filters;
+
+      const res = await fetch("/api/text-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setHits(data.hits);
+    } catch (err) {
+      console.error("Text search failed:", err);
+      setHits([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const handleSearch = useCallback(() => {
     setSimilarTo(null);
-    doSearch(query);
-  }, [query, doSearch]);
+    if (query.trim()) {
+      doSearch(query);
+    } else if (textQuery.trim()) {
+      doTextSearch(textQuery);
+    }
+  }, [query, textQuery, doSearch, doTextSearch]);
 
   const handleFindSimilar = useCallback(
     (hit: SearchHit) => {
       setSimilarTo(hit);
       setQuery(hit.chunkText.slice(0, 200));
+      setTextQuery("");
       doSearch(hit.chunkText);
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
@@ -95,6 +132,7 @@ export default function Home() {
     (topic: TopicData) => {
       setSimilarTo(null);
       setQuery(topic.query);
+      setTextQuery("");
       doSearch(topic.query);
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
@@ -154,6 +192,8 @@ export default function Home() {
         <SearchBar
           query={query}
           onQueryChange={setQuery}
+          textQuery={textQuery}
+          onTextQueryChange={setTextQuery}
           onSearch={handleSearch}
           loading={loading}
         />
@@ -190,6 +230,7 @@ export default function Home() {
             onClick={() => {
               setSimilarTo(null);
               setQuery("");
+              setTextQuery("");
               setHits([]);
               setSearched(false);
             }}
