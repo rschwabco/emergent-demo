@@ -12,6 +12,7 @@ import {
 import { TagBar, TagFilter } from "@/components/tag-bar";
 import { Button } from "@/components/ui/button";
 import { useTagStore } from "@/hooks/use-tag-store";
+import { ArrowLeft } from "lucide-react";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -171,6 +172,21 @@ export default function Home() {
           onDeleteTag={tagStore.removeTag}
         />
       </div>
+
+      {searched && (
+        <button
+          onClick={() => {
+            setSimilarTo(null);
+            setQuery("");
+            setHits([]);
+            setSearched(false);
+          }}
+          className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
+        >
+          <ArrowLeft className="size-3.5" />
+          Explore Topics
+        </button>
+      )}
 
       {similarTo && (
         <div className="bg-muted/50 flex items-start gap-3 rounded-lg border px-4 py-3">
