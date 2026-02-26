@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react";
 
 interface DashboardStatsProps {
   totalChunks: number;
-  projectCount: number;
+  projectCount?: number;
   behaviorCount: number;
 }
 
@@ -31,12 +31,12 @@ export function DashboardStats({
 }: DashboardStatsProps) {
   const stats: StatConfig[] = [
     { label: "Chunks Indexed", value: formatNumber(totalChunks), icon: Database, color: "text-sky-400", bg: "bg-sky-500/10" },
-    { label: "Projects", value: String(projectCount), icon: FolderOpen, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+    ...(projectCount ? [{ label: "Projects", value: String(projectCount), icon: FolderOpen, color: "text-emerald-400", bg: "bg-emerald-500/10" }] : []),
     { label: "Behavior Patterns", value: String(behaviorCount), icon: Layers, color: "text-violet-400", bg: "bg-violet-500/10" },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className={`grid gap-3 ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
       {stats.map((stat) => (
         <Card key={stat.label} className="flex items-center gap-3 px-4 py-3">
           <div className={`${stat.bg} flex size-9 shrink-0 items-center justify-center rounded-lg`}>

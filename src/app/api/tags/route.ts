@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 
-const INDEX_NAME = "agent-traces-semantic";
-const NAMESPACE = "traces";
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const url = new URL(request.url);
+    const indexName = url.searchParams.get("indexName") || DEFAULT_INDEX;
+    const namespace = url.searchParams.get("namespace");
+    const resolvedNs = namespace ?? await resolveNamespace(indexName, DEFAULT_NAMESPACE);
+
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
+    const idx = pc.index(indexName);
 
     const response = await idx.fetchByMetadata({
       filter: { tags: { $exists: true } },
       limit: 1000,
-      namespace: NAMESPACE,
+      namespace: resolvedNs,
     });
 
     const tagSet = new Set<string>();
@@ -37,8 +42,10 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { updates } = body as {
+    const { updates, indexName, namespace } = body as {
       updates: Array<{ id: string; tags: string[] }>;
+      indexName?: string;
+      namespace?: string;
     };
 
     if (!updates?.length) {
@@ -48,15 +55,17 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const idxName = indexName || DEFAULT_INDEX;
+    const resolvedNs = namespace ?? await resolveNamespace(idxName, DEFAULT_NAMESPACE);
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
+    const idx = pc.index(idxName);
 
     await Promise.all(
       updates.map((u) =>
         idx.update({
           id: u.id,
           metadata: { tags: u.tags },
-          namespace: NAMESPACE,
+          namespace: resolvedNs,
         })
       )
     );

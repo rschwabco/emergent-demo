@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 
-const INDEX_NAME = "agent-traces-semantic";
-const NAMESPACE = "traces";
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
 
 interface TraceChunk {
   turnIndex: number;
@@ -31,15 +31,25 @@ export async function GET(
       );
     }
 
+    const url = new URL(_request.url);
+    const indexName = url.searchParams.get("indexName") || DEFAULT_INDEX;
+    const namespace = url.searchParams.get("namespace");
+    const resolvedNs = namespace ?? await resolveNamespace(indexName, DEFAULT_NAMESPACE);
+
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
-    const ns = idx.namespace(NAMESPACE);
+    const idx = pc.index(indexName);
+    const ns = idx.namespace(resolvedNs);
 
     const results = await ns.searchRecords({
       query: {
         topK: 10000,
         inputs: { text: traceId },
-        filter: { trace_id: { $eq: traceId } },
+        filter: {
+          $or: [
+            { trace_id: { $eq: traceId } },
+            { source_id: { $eq: traceId } },
+          ],
+        },
       },
     });
 

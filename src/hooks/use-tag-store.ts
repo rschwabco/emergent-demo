@@ -12,6 +12,7 @@ export interface TagStore {
   getHitIdsForTag: (tag: string) => Set<string>;
   syncFromHits: (hits: Array<{ id: string; tags: string[] }>) => void;
   loadFromServer: () => Promise<void>;
+  setIndexName: (name: string) => void;
 }
 
 const LS_TAGS_KEY = "trace-explorer:tags";
@@ -47,11 +48,13 @@ function writeLocalAssignments(assignments: Record<string, string[]>) {
   } catch { /* quota exceeded, ignore */ }
 }
 
-function persistToPinecone(updates: Array<{ id: string; tags: string[] }>) {
+function persistToPinecone(updates: Array<{ id: string; tags: string[] }>, indexName?: string) {
+  const body: Record<string, unknown> = { updates };
+  if (indexName) body.indexName = indexName;
   fetch("/api/tags", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ updates }),
+    body: JSON.stringify(body),
   }).catch((err) => console.error("Failed to persist tags to Pinecone:", err));
 }
 
@@ -61,6 +64,7 @@ export function useTagStore(): TagStore {
   const assignmentsRef = useRef(assignments);
   assignmentsRef.current = assignments;
   const initializedRef = useRef(false);
+  const indexNameRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -84,9 +88,14 @@ export function useTagStore(): TagStore {
     writeLocalAssignments(assignments);
   }, [assignments]);
 
+  const setIndexName = useCallback((name: string) => {
+    indexNameRef.current = name;
+  }, []);
+
   const loadFromServer = useCallback(async () => {
     try {
-      const res = await fetch("/api/tags");
+      const params = indexNameRef.current ? `?indexName=${encodeURIComponent(indexNameRef.current)}` : "";
+      const res = await fetch(`/api/tags${params}`);
       if (!res.ok) return;
       const data = await res.json();
       const serverTags: string[] = data.tags ?? [];
@@ -163,7 +172,7 @@ export function useTagStore(): TagStore {
           updates.push({ id, tags: next[id] });
         }
 
-        persistToPinecone(updates);
+        persistToPinecone(updates, indexNameRef.current);
         return next;
       });
     },
@@ -177,7 +186,7 @@ export function useTagStore(): TagStore {
         next[hitId] = next[hitId].filter((t) => t !== tag);
         if (next[hitId].length === 0) delete next[hitId];
       }
-      persistToPinecone([{ id: hitId, tags: next[hitId] || [] }]);
+      persistToPinecone([{ id: hitId, tags: next[hitId] || [] }], indexNameRef.current);
       return next;
     });
   }, []);
@@ -200,7 +209,7 @@ export function useTagStore(): TagStore {
         }
       }
 
-      if (updates.length > 0) persistToPinecone(updates);
+      if (updates.length > 0) persistToPinecone(updates, indexNameRef.current);
       return next;
     });
   }, []);
@@ -232,7 +241,8 @@ export function useTagStore(): TagStore {
       getHitIdsForTag,
       syncFromHits,
       loadFromServer,
+      setIndexName,
     }),
-    [tags, assignments, assignTag, unassignTag, removeTag, getTagsForHit, getHitIdsForTag, syncFromHits, loadFromServer]
+    [tags, assignments, assignTag, unassignTag, removeTag, getTagsForHit, getHitIdsForTag, syncFromHits, loadFromServer, setIndexName]
   );
 }

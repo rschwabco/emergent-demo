@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 
-const SEMANTIC_INDEX = "agent-traces-semantic";
-const KEYWORD_INDEX = "agent-traces";
-const NAMESPACE = "traces";
+const DEFAULT_SEMANTIC_INDEX = "agent-traces-semantic";
+const DEFAULT_KEYWORD_INDEX = "agent-traces";
+const DEFAULT_NAMESPACE = "traces";
 const CONTENT_TEXT_FIELD = ".content.text";
 const DOCUMENTS_API_VERSION = "2026-01.alpha";
 
 const RRF_K = 60;
 
-let cachedKeywordHost: string | null = null;
+const hostCache = new Map<string, string>();
 
-async function getKeywordIndexHost(): Promise<string> {
-  if (cachedKeywordHost) return cachedKeywordHost;
+async function getKeywordIndexHost(keywordIndex: string): Promise<string> {
+  const cached = hostCache.get(keywordIndex);
+  if (cached) return cached;
   const pc = getPineconeClient();
-  const desc = await pc.describeIndex(KEYWORD_INDEX);
-  cachedKeywordHost = desc.host;
-  return cachedKeywordHost;
+  const desc = await pc.describeIndex(keywordIndex);
+  hostCache.set(keywordIndex, desc.host);
+  return desc.host;
 }
 
 interface RawHit {
@@ -35,10 +36,12 @@ interface RawHit {
 async function semanticSearch(
   query: string,
   topK: number,
-  filter: Record<string, unknown>
+  filter: Record<string, unknown>,
+  semanticIndex: string,
+  namespace: string
 ): Promise<RawHit[]> {
   const pc = getPineconeClient();
-  const ns = pc.index(SEMANTIC_INDEX).namespace(NAMESPACE);
+  const ns = pc.index(semanticIndex).namespace(namespace);
 
   const searchOptions: Parameters<typeof ns.searchRecords>[0] = {
     query: {
@@ -52,7 +55,7 @@ async function semanticSearch(
 
   return results.result.hits.map((hit) => {
     const fields = hit.fields as Record<string, unknown>;
-    const traceId = fields.trace_id as string;
+    const traceId = (fields.trace_id as string) ?? (fields.source_id as string) ?? "";
     const parts = traceId.replace(".json", "").split("__");
     const rawTags = fields.tags;
     const tags: string[] = Array.isArray(rawTags)
@@ -66,8 +69,8 @@ async function semanticSearch(
       traceId,
       turnIndex: (fields.turn_index as number) ?? 0,
       chunkIndex: (fields.chunk_index as number) ?? 0,
-      project: parts[0] ?? "",
-      issue: parts[1] ?? "",
+      project: (fields.project as string) || parts[0] || "",
+      issue: (fields.title as string) || parts[1] || "",
       tags,
     };
   });
@@ -76,9 +79,11 @@ async function semanticSearch(
 async function keywordSearch(
   query: string,
   topK: number,
-  filter: Record<string, unknown>
+  filter: Record<string, unknown>,
+  keywordIndex: string,
+  namespace: string
 ): Promise<RawHit[]> {
-  const host = await getKeywordIndexHost();
+  const host = await getKeywordIndexHost(keywordIndex);
   const apiKey = process.env.PINECONE_API_KEY!;
 
   const kwFilter: Record<string, unknown> = {};
@@ -96,7 +101,7 @@ async function keywordSearch(
   }
 
   const res = await fetch(
-    `https://${host}/namespaces/${NAMESPACE}/documents/search`,
+    `https://${host}/namespaces/${namespace}/documents/search`,
     {
       method: "POST",
       headers: {
@@ -112,7 +117,7 @@ async function keywordSearch(
 
   const data = await res.json();
   return (data.matches ?? []).map((match: Record<string, unknown>) => {
-    const traceId = (match[".trace_id"] as string) ?? "";
+    const traceId = (match[".trace_id"] as string) ?? (match[".source_id"] as string) ?? "";
     const parts = traceId.replace(".json", "").split("__");
     return {
       id: match.id as string,
@@ -122,8 +127,8 @@ async function keywordSearch(
       traceId,
       turnIndex: (match[".turn_index"] as number) ?? 0,
       chunkIndex: (match[".content.chunk_index"] as number) ?? 0,
-      project: parts[0] ?? "",
-      issue: parts[1] ?? "",
+      project: (match[".project"] as string) || parts[0] || "",
+      issue: (match[".title"] as string) || parts[1] || "",
       tags: [],
     };
   });
@@ -202,11 +207,18 @@ function reciprocalRankFusion(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { query, topK = 15, filters } = body as {
+    const { query, topK = 15, filters, indexName, keywordIndexName, namespace } = body as {
       query: string;
       topK?: number;
       filters?: { role?: string; project?: string };
+      indexName?: string;
+      keywordIndexName?: string;
+      namespace?: string;
     };
+
+    const semanticIdx = indexName || DEFAULT_SEMANTIC_INDEX;
+    const keywordIdx = keywordIndexName || DEFAULT_KEYWORD_INDEX;
+    const ns = namespace ?? await resolveNamespace(semanticIdx, DEFAULT_NAMESPACE);
 
     if (!query?.trim()) {
       return NextResponse.json(
@@ -225,8 +237,8 @@ export async function POST(request: NextRequest) {
     const perSourceK = Math.max(topK * 2, 20);
 
     const [semanticHits, keywordHits] = await Promise.allSettled([
-      semanticSearch(trimmed, perSourceK, semanticFilter),
-      keywordSearch(trimmed, perSourceK, semanticFilter),
+      semanticSearch(trimmed, perSourceK, semanticFilter, semanticIdx, ns),
+      keywordSearch(trimmed, perSourceK, semanticFilter, keywordIdx, ns),
     ]);
 
     const sHits =

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 import { getOpenAIClient } from "@/lib/openai";
 import { PROBES } from "@/lib/explore-probes";
 import { getCachedDashboard, setCachedDashboard } from "@/lib/dashboard-cache";
 
-const INDEX_NAME = "agent-traces-semantic";
-const NAMESPACE = "traces";
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
 const HITS_PER_PROBE = 25;
 const SNIPPETS_FOR_LLM = 10;
 const EXPANSION_QUERIES_PER_PROBE = 3;
@@ -37,19 +37,19 @@ function parseHit(
   hit: { _id: unknown; _score: unknown; fields: unknown },
   behaviorId: string
 ): ParsedHit {
-  const fields = hit.fields as HitFields;
-  const traceId = fields.trace_id;
+  const fields = hit.fields as Record<string, unknown>;
+  const traceId = (fields.trace_id as string) ?? (fields.source_id as string) ?? "";
   const parts = traceId.replace(".json", "").split("__");
   return {
     id: hit._id,
     score: hit._score,
-    chunkText: fields.chunk_text,
-    role: fields.role,
+    chunkText: (fields.chunk_text as string) ?? "",
+    role: (fields.role as string) ?? "unknown",
     traceId,
-    turnIndex: fields.turn_index,
-    chunkIndex: fields.chunk_index,
-    project: parts[0],
-    issue: parts[1],
+    turnIndex: (fields.turn_index as number) ?? (fields.chunk_index as number) ?? 0,
+    chunkIndex: (fields.chunk_index as number) ?? 0,
+    project: (fields.project as string) || parts[0] || "",
+    issue: (fields.title as string) || parts[1] || "",
     behaviorId,
   };
 }
@@ -183,9 +183,12 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const bustCache = url.searchParams.get("bust") === "1";
+    const indexName = url.searchParams.get("indexName") || DEFAULT_INDEX;
+    const namespace = url.searchParams.get("namespace") ?? DEFAULT_NAMESPACE;
+    const cacheKeyPrefix = `${indexName}:${namespace}`;
 
     if (!bustCache) {
-      const cached = await getCachedDashboard<Record<string, unknown>>();
+      const cached = await getCachedDashboard<Record<string, unknown>>(cacheKeyPrefix);
       if (cached) {
         return NextResponse.json(
           { ...cached, cached: true },
@@ -200,13 +203,15 @@ export async function GET(request: Request) {
     }
 
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
-    const ns = idx.namespace(NAMESPACE);
+    const idx = pc.index(indexName);
 
-    // Phase 1: Parallel Pinecone calls
-    const [statsResult, ...probeResults] = await Promise.all([
-      idx.describeIndexStats(),
-      ...PROBES.map(async (probe) => {
+    const resolvedNs = await resolveNamespace(indexName, namespace);
+    const statsResult = await idx.describeIndexStats();
+    const ns = idx.namespace(resolvedNs);
+
+    // Phase 1: Parallel Pinecone probe calls
+    const probeResults = await Promise.all(
+      PROBES.map(async (probe) => {
         const results = await ns.searchRecords({
           query: {
             topK: HITS_PER_PROBE,
@@ -215,10 +220,11 @@ export async function GET(request: Request) {
         });
         return { probe, hits: [...results.result.hits] };
       }),
-    ]);
+    );
 
+    const nsStatsKey = resolvedNs === "" ? "__default__" : resolvedNs;
     const totalChunks =
-      statsResult.namespaces?.traces?.recordCount ??
+      statsResult.namespaces?.[nsStatsKey]?.recordCount ??
       statsResult.totalRecordCount ??
       0;
 
@@ -319,40 +325,51 @@ export async function GET(request: Request) {
       return generateBehaviorInsight(probe.label, snippets);
     });
 
-    // 2b: Project narratives (derived from hits grouped by project)
-    const projectHitsMap = new Map<
-      string,
-      { behavior: string; text: string; hit: ParsedHit }[]
-    >();
-    for (const hit of allParsedHits) {
-      const existing = projectHitsMap.get(hit.project) ?? [];
-      const behavior =
-        behaviorData.find((b) => b.probe.id === hit.behaviorId)?.probe.label ??
-        hit.behaviorId;
-      existing.push({
-        behavior,
-        text: truncateSnippet(hit.chunkText, 200),
-        hit,
-      });
-      projectHitsMap.set(hit.project, existing);
+    const isAgentTraces = indexName === DEFAULT_INDEX;
+    let behaviorInsights: string[];
+
+    // 2b: Project narratives (only for agent-traces-semantic)
+    let projectEntries: [string, { behavior: string; text: string; hit: ParsedHit }[]][] = [];
+    let projectNarratives: string[] = [];
+
+    if (isAgentTraces) {
+      const projectHitsMap = new Map<
+        string,
+        { behavior: string; text: string; hit: ParsedHit }[]
+      >();
+      for (const hit of allParsedHits) {
+        const existing = projectHitsMap.get(hit.project) ?? [];
+        const behavior =
+          behaviorData.find((b) => b.probe.id === hit.behaviorId)?.probe.label ??
+          hit.behaviorId;
+        existing.push({
+          behavior,
+          text: truncateSnippet(hit.chunkText, 200),
+          hit,
+        });
+        projectHitsMap.set(hit.project, existing);
+      }
+
+      projectEntries = [...projectHitsMap.entries()]
+        .filter(([, hits]) => hits.length >= 2)
+        .sort((a, b) => b[1].length - a[1].length);
+
+      const projectNarrativePromises = projectEntries.map(([project, hits]) =>
+        generateProjectNarrative(
+          project,
+          hits.slice(0, 8).map((h) => ({ behavior: h.behavior, text: h.text }))
+        )
+      );
+
+      const [behaviorInsightsResult, ...projectNarrativesResult] = await Promise.all([
+        Promise.all(behaviorInsightPromises),
+        ...projectNarrativePromises,
+      ]);
+      behaviorInsights = behaviorInsightsResult;
+      projectNarratives = projectNarrativesResult;
+    } else {
+      behaviorInsights = await Promise.all(behaviorInsightPromises);
     }
-
-    const projectEntries = [...projectHitsMap.entries()]
-      .filter(([, hits]) => hits.length >= 2)
-      .sort((a, b) => b[1].length - a[1].length);
-
-    const projectNarrativePromises = projectEntries.map(([project, hits]) =>
-      generateProjectNarrative(
-        project,
-        hits.slice(0, 8).map((h) => ({ behavior: h.behavior, text: h.text }))
-      )
-    );
-
-    // Run behavior insights + project narratives in parallel
-    const [behaviorInsights, ...projectNarratives] = await Promise.all([
-      Promise.all(behaviorInsightPromises),
-      ...projectNarrativePromises,
-    ]);
 
     // 2c: Cross-cutting insights (needs behavior insights first)
     const behaviorSummaries = behaviorData.map(({ probe }, i) => ({
@@ -363,7 +380,7 @@ export async function GET(request: Request) {
       await generateCrossCuttingInsights(behaviorSummaries);
 
     // Build response
-    const behaviors = behaviorData.map(({ probe, parsed, projects }, i) => ({
+    const behaviors = behaviorData.map(({ probe, parsed, projects: probeProjects }, i) => ({
       id: probe.id,
       label: probe.label,
       description: probe.description,
@@ -372,7 +389,7 @@ export async function GET(request: Request) {
       hitCount: parsed.length,
       seedHitCount: seedHitCounts.get(probe.id) ?? parsed.length,
       expandedQueries: expandedQueriesMap.get(probe.id) ?? [],
-      projects,
+      ...(isAgentTraces && { projects: probeProjects }),
       hits: parsed.map((h) => ({
         id: h.id as string,
         score: h.score as number,
@@ -434,7 +451,7 @@ export async function GET(request: Request) {
       roleDistribution,
     };
 
-    await setCachedDashboard(responseData);
+    await setCachedDashboard(responseData, cacheKeyPrefix);
 
     return NextResponse.json(
       { ...responseData, cached: false },

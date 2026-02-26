@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 
-const INDEX_NAME = "agent-traces-semantic";
-const NAMESPACE = "traces";
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { query, topK = 10, filters, rerank } = body as {
+    const { query, topK = 10, filters, rerank, indexName, namespace } = body as {
       query: string;
       topK?: number;
       filters?: { role?: string; project?: string };
       rerank?: boolean;
+      indexName?: string;
+      namespace?: string;
     };
 
     if (!query?.trim()) {
@@ -21,9 +23,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const idxName = indexName || DEFAULT_INDEX;
+    const resolvedNs = namespace ?? await resolveNamespace(idxName, DEFAULT_NAMESPACE);
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
-    const ns = idx.namespace(NAMESPACE);
+    const idx = pc.index(idxName);
+    const ns = idx.namespace(resolvedNs);
 
     const filter: Record<string, unknown> = {};
     if (filters?.role) {
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     const hits = results.result.hits.map((hit) => {
       const fields = hit.fields as Record<string, unknown>;
-      const traceId = fields.trace_id as string;
+      const traceId = (fields.trace_id as string) ?? (fields.source_id as string) ?? "";
       const parts = traceId.replace(".json", "").split("__");
       const rawTags = fields.tags;
       const tags: string[] = Array.isArray(rawTags)
@@ -68,8 +72,8 @@ export async function POST(request: NextRequest) {
         traceId,
         turnIndex: fields.turn_index,
         chunkIndex: fields.chunk_index,
-        project: parts[0],
-        issue: parts[1],
+        project: (fields.project as string) || parts[0] || "",
+        issue: (fields.title as string) || parts[1] || "",
         tags,
       };
     });

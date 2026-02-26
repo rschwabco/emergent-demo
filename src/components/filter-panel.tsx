@@ -30,9 +30,10 @@ const PROJECTS = [
 
 interface FilterPanelProps {
   role: string;
-  project: string;
+  project?: string;
   onRoleChange: (role: string) => void;
-  onProjectChange: (project: string) => void;
+  onProjectChange?: (project: string) => void;
+  showProjects?: boolean;
 }
 
 export function FilterPanel({
@@ -40,6 +41,7 @@ export function FilterPanel({
   project,
   onRoleChange,
   onProjectChange,
+  showProjects = false,
 }: FilterPanelProps) {
   return (
     <div className="flex items-center gap-2">
@@ -56,18 +58,20 @@ export function FilterPanel({
         </SelectContent>
       </Select>
 
-      <Select value={project} onValueChange={onProjectChange}>
-        <SelectTrigger size="sm" className="text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {PROJECTS.map((p) => (
-            <SelectItem key={p.value} value={p.value}>
-              {p.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {showProjects && onProjectChange && (
+        <Select value={project ?? "all"} onValueChange={onProjectChange}>
+          <SelectTrigger size="sm" className="text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PROJECTS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
     </div>
   );
 }

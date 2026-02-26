@@ -20,6 +20,7 @@ export default function TracePage() {
   const highlightTurn = searchParams.get("turn")
     ? Number(searchParams.get("turn"))
     : undefined;
+  const indexName = searchParams.get("indexName") || "agent-traces-semantic";
 
   const [data, setData] = useState<TraceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,8 @@ export default function TracePage() {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/trace/${encodeURIComponent(params.traceId)}`)
+    const qs = indexName ? `?indexName=${encodeURIComponent(indexName)}` : "";
+    fetch(`/api/trace/${encodeURIComponent(params.traceId)}${qs}`)
       .then((res) => res.json())
       .then((json) => {
         if (json.error) throw new Error(json.error);
@@ -44,7 +46,7 @@ export default function TracePage() {
   return (
     <div className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-4 py-10">
       <Link
-        href="/"
+        href={`/index/${encodeURIComponent(indexName)}`}
         className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
       >
         <ArrowLeft className="size-3.5" />

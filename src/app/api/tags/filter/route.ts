@@ -1,25 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 
-const INDEX_NAME = "agent-traces-semantic";
-const NAMESPACE = "traces";
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { tag, limit = 100 } = body as { tag: string; limit?: number };
+    const { tag, limit = 100, indexName, namespace } = body as {
+      tag: string;
+      limit?: number;
+      indexName?: string;
+      namespace?: string;
+    };
 
     if (!tag?.trim()) {
       return NextResponse.json({ error: "tag is required" }, { status: 400 });
     }
 
+    const idxName = indexName || DEFAULT_INDEX;
+    const resolvedNs = namespace ?? await resolveNamespace(idxName, DEFAULT_NAMESPACE);
     const pc = getPineconeClient();
-    const idx = pc.index(INDEX_NAME);
+    const idx = pc.index(idxName);
 
     const response = await idx.fetchByMetadata({
       filter: { tags: { $in: [tag.trim().toLowerCase()] } },
       limit,
-      namespace: NAMESPACE,
+      namespace: resolvedNs,
     });
 
     const hits = Object.entries(response.records).map(([id, record]) => {

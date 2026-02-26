@@ -65,7 +65,7 @@ export function ProjectBreakdown({
             <button
               key={project.name}
               onClick={() => onProjectClick?.(project.name)}
-              className="group flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:border-ring/50"
+              className="group flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-all hover:bg-white/[0.03] dark:hover:bg-white/[0.04] hover:shadow-md"
             >
               <span className={`size-2.5 shrink-0 rounded-full ${colors.dot}`} />
               <span className={`flex-1 text-sm font-medium capitalize ${colors.text}`}>

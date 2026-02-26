@@ -23,20 +23,20 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-const BEHAVIOR_THEME: Record<string, { icon: LucideIcon; color: string; bg: string; border: string }> = {
-  "debugging":      { icon: Bug,          color: "text-red-400",    bg: "bg-red-500/10",    border: "border-l-red-500/50" },
-  "error-handling": { icon: ShieldAlert,  color: "text-rose-400",   bg: "bg-rose-500/10",   border: "border-l-rose-500/50" },
-  "test-failures":  { icon: FlaskConical, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-l-orange-500/50" },
-  "reproducing":    { icon: RotateCcw,    color: "text-amber-400",  bg: "bg-amber-500/10",  border: "border-l-amber-500/50" },
-  "code-reading":   { icon: BookOpen,     color: "text-sky-400",    bg: "bg-sky-500/10",    border: "border-l-sky-500/50" },
-  "refactoring":    { icon: Wrench,       color: "text-blue-400",   bg: "bg-blue-500/10",   border: "border-l-blue-500/50" },
-  "api-design":     { icon: Code2,        color: "text-indigo-400", bg: "bg-indigo-500/10", border: "border-l-indigo-500/50" },
-  "verification":   { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-l-emerald-500/50" },
-  "performance":    { icon: Gauge,        color: "text-teal-400",    bg: "bg-teal-500/10",    border: "border-l-teal-500/50" },
-  "config-deps":    { icon: Package,      color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-l-violet-500/50" },
+const BEHAVIOR_THEME: Record<string, { icon: LucideIcon; color: string; bg: string; border: string; hoverBg: string }> = {
+  "debugging":      { icon: Bug,          color: "text-red-400",    bg: "bg-red-500/10",    border: "border-l-red-500/50",    hoverBg: "hover:bg-red-500/[0.04]" },
+  "error-handling": { icon: ShieldAlert,  color: "text-rose-400",   bg: "bg-rose-500/10",   border: "border-l-rose-500/50",   hoverBg: "hover:bg-rose-500/[0.04]" },
+  "test-failures":  { icon: FlaskConical, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-l-orange-500/50", hoverBg: "hover:bg-orange-500/[0.04]" },
+  "reproducing":    { icon: RotateCcw,    color: "text-amber-400",  bg: "bg-amber-500/10",  border: "border-l-amber-500/50",  hoverBg: "hover:bg-amber-500/[0.04]" },
+  "code-reading":   { icon: BookOpen,     color: "text-sky-400",    bg: "bg-sky-500/10",    border: "border-l-sky-500/50",    hoverBg: "hover:bg-sky-500/[0.04]" },
+  "refactoring":    { icon: Wrench,       color: "text-blue-400",   bg: "bg-blue-500/10",   border: "border-l-blue-500/50",   hoverBg: "hover:bg-blue-500/[0.04]" },
+  "api-design":     { icon: Code2,        color: "text-indigo-400", bg: "bg-indigo-500/10", border: "border-l-indigo-500/50", hoverBg: "hover:bg-indigo-500/[0.04]" },
+  "verification":   { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-l-emerald-500/50", hoverBg: "hover:bg-emerald-500/[0.04]" },
+  "performance":    { icon: Gauge,        color: "text-teal-400",    bg: "bg-teal-500/10",    border: "border-l-teal-500/50",    hoverBg: "hover:bg-teal-500/[0.04]" },
+  "config-deps":    { icon: Package,      color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-l-violet-500/50",  hoverBg: "hover:bg-violet-500/[0.04]" },
 };
 
-const DEFAULT_THEME = { icon: Code2, color: "text-muted-foreground", bg: "bg-muted", border: "border-l-muted" };
+const DEFAULT_THEME = { icon: Code2, color: "text-muted-foreground", bg: "bg-muted", border: "border-l-muted", hoverBg: "hover:bg-muted/50" };
 
 export interface BehaviorHit {
   id: string;
@@ -59,7 +59,7 @@ export interface BehaviorData {
   hitCount: number;
   seedHitCount?: number;
   expandedQueries?: string[];
-  projects: string[];
+  projects?: string[];
   hits: BehaviorHit[];
 }
 
@@ -75,7 +75,7 @@ export function BehaviorCard({
 
   return (
     <Card
-      className={`group flex cursor-pointer flex-col border-l-3 ${theme.border} py-4 transition-colors hover:border-ring/50`}
+      className={`group flex cursor-pointer flex-col border-l-3 ${theme.border} py-4 transition-all ${theme.hoverBg} hover:shadow-md`}
       onClick={() => onClick(behavior)}
     >
       <CardHeader className="gap-1 pb-0">
@@ -91,6 +91,7 @@ export function BehaviorCard({
       </CardHeader>
 
       <CardContent className="flex flex-1 flex-col">
+        {behavior.projects && behavior.projects.length > 0 && (
         <div className="ml-10 mt-3 flex flex-wrap gap-1.5">
           {behavior.projects.slice(0, 4).map((project) => (
             <span
@@ -106,6 +107,7 @@ export function BehaviorCard({
             </span>
           )}
         </div>
+        )}
 
         <div className="mt-auto flex items-center justify-between pt-4 text-xs text-muted-foreground">
           <span>
@@ -114,7 +116,7 @@ export function BehaviorCard({
             ) : (
               <>{behavior.hitCount} chunks</>
             )}
-            {" "}&middot; {behavior.projects.length} projects
+            {behavior.projects && <>{" "}&middot; {behavior.projects.length} projects</>}
           </span>
           <span className="flex items-center gap-1 transition-colors group-hover:text-foreground">
             Explore <ArrowRight className="size-3" />

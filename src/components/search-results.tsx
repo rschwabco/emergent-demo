@@ -178,6 +178,7 @@ function ResultCard({
   selectionActive,
   hitTags,
   onRemoveTag,
+  indexName,
 }: {
   hit: SearchHit;
   rank: number;
@@ -187,6 +188,7 @@ function ResultCard({
   selectionActive: boolean;
   hitTags: string[];
   onRemoveTag?: (hitId: string, tag: string) => void;
+  indexName?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [contextTurns, setContextTurns] = useState<ContextTurn[] | null>(null);
@@ -214,6 +216,7 @@ function ResultCard({
           traceId: hit.traceId,
           turnIndex: hit.turnIndex,
           radius: 2,
+          indexName,
         }),
       });
       const data = await res.json();
@@ -238,7 +241,7 @@ function ResultCard({
   return (
     <Card
       className={cn(
-        "group cursor-pointer py-4 transition-colors hover:border-ring/50",
+        "group cursor-pointer py-4 transition-all hover:bg-white/[0.03] dark:hover:bg-white/[0.04] hover:shadow-md",
         selected && "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/20"
       )}
       onClick={handleCardClick}
@@ -357,7 +360,7 @@ function ResultCard({
             onClick={(e) => e.stopPropagation()}
           >
             <Link
-              href={`/trace/${encodeURIComponent(hit.traceId)}?turn=${hit.turnIndex}`}
+              href={`/trace/${encodeURIComponent(hit.traceId)}?turn=${hit.turnIndex}${indexName ? `&indexName=${encodeURIComponent(indexName)}` : ""}`}
             >
               View trace <ArrowRight className="size-3" />
             </Link>
@@ -376,6 +379,7 @@ export function SearchResults({
   onSelect,
   getTagsForHit,
   onRemoveTag,
+  indexName,
 }: {
   hits: SearchHit[];
   loading?: boolean;
@@ -384,6 +388,7 @@ export function SearchResults({
   onSelect: (id: string, checked: boolean) => void;
   getTagsForHit: (id: string) => string[];
   onRemoveTag?: (hitId: string, tag: string) => void;
+  indexName?: string;
 }) {
   const selectionActive = selectedIds.size > 0;
 
@@ -422,6 +427,7 @@ export function SearchResults({
           selectionActive={selectionActive}
           hitTags={getTagsForHit(hit.id)}
           onRemoveTag={onRemoveTag}
+          indexName={indexName}
         />
       ))}
     </div>

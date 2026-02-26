@@ -1,29 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 
-const INDEX_NAME = "agent-traces";
-const NAMESPACE = "traces";
+const DEFAULT_INDEX = "agent-traces";
+const DEFAULT_NAMESPACE = "traces";
 const CONTENT_TEXT_FIELD = ".content.text";
 const DOCUMENTS_API_VERSION = "2026-01.alpha";
 
-let cachedHost: string | null = null;
+const docSearchHostCache = new Map<string, string>();
 
-async function getIndexHost(): Promise<string> {
-  if (cachedHost) return cachedHost;
+async function getIndexHost(idxName: string): Promise<string> {
+  const cached = docSearchHostCache.get(idxName);
+  if (cached) return cached;
   const pc = getPineconeClient();
-  const desc = await pc.describeIndex(INDEX_NAME);
-  cachedHost = desc.host;
-  return cachedHost;
+  const desc = await pc.describeIndex(idxName);
+  docSearchHostCache.set(idxName, desc.host);
+  return desc.host;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { query, topK = 10, filters, field } = body as {
+    const { query, topK = 10, filters, field, indexName, namespace } = body as {
       query: string;
       topK?: number;
       filters?: { role?: string; project?: string };
       field?: string;
+      indexName?: string;
+      namespace?: string;
     };
 
     if (!query?.trim()) {
@@ -33,7 +36,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const host = await getIndexHost();
+    const idxName = indexName || DEFAULT_INDEX;
+    const ns = namespace ?? await resolveNamespace(idxName, DEFAULT_NAMESPACE);
+    const host = await getIndexHost(idxName);
     const apiKey = process.env.PINECONE_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -63,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     const res = await fetch(
-      `https://${host}/namespaces/${NAMESPACE}/documents/search`,
+      `https://${host}/namespaces/${ns}/documents/search`,
       {
         method: "POST",
         headers: {
@@ -87,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     const hits = (data.matches ?? []).map(
       (match: Record<string, unknown>) => {
-        const traceId = (match[".trace_id"] as string) ?? "";
+        const traceId = (match[".trace_id"] as string) ?? (match[".source_id"] as string) ?? "";
         const parts = traceId.replace(".json", "").split("__");
         return {
           id: match.id,
@@ -97,8 +102,8 @@ export async function POST(request: NextRequest) {
           traceId,
           turnIndex: match[".turn_index"] ?? 0,
           chunkIndex: match[".content.chunk_index"] ?? 0,
-          project: parts[0] ?? "",
-          issue: parts[1] ?? "",
+          project: (match[".project"] as string) || parts[0] || "",
+          issue: (match[".title"] as string) || parts[1] || "",
           tags: [],
         };
       }

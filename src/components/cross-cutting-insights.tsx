@@ -16,12 +16,13 @@ const INSIGHT_STYLES: {
   color: string;
   bg: string;
   border: string;
+  hoverBg: string;
 }[] = [
-  { icon: Sparkles, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
-  { icon: TrendingUp, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
-  { icon: Eye, color: "text-sky-400", bg: "bg-sky-500/10", border: "border-sky-500/20" },
-  { icon: Zap, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
-  { icon: Target, color: "text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/20" },
+  { icon: Sparkles, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", hoverBg: "hover:bg-amber-500/[0.04]" },
+  { icon: TrendingUp, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", hoverBg: "hover:bg-emerald-500/[0.04]" },
+  { icon: Eye, color: "text-sky-400", bg: "bg-sky-500/10", border: "border-sky-500/20", hoverBg: "hover:bg-sky-500/[0.04]" },
+  { icon: Zap, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20", hoverBg: "hover:bg-violet-500/[0.04]" },
+  { icon: Target, color: "text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/20", hoverBg: "hover:bg-rose-500/[0.04]" },
 ];
 
 interface CrossCuttingInsightsProps {
@@ -46,7 +47,7 @@ export function CrossCuttingInsights({ insights }: CrossCuttingInsightsProps) {
           return (
             <Card
               key={i}
-              className={`border ${style.border} py-3 transition-colors hover:border-ring/30`}
+              className={`border ${style.border} py-3 transition-all ${style.hoverBg} hover:shadow-md`}
             >
               <CardHeader className="pb-0">
                 <CardTitle className="flex items-start gap-2.5 text-sm font-medium leading-snug">
