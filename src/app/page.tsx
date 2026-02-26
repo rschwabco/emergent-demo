@@ -45,6 +45,9 @@ export default function Home() {
       })
       .catch((err) => console.error("Explore failed:", err))
       .finally(() => setTopicsLoading(false));
+
+    tagStore.loadFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const doSearch = useCallback(async (searchQuery: string) => {
@@ -172,7 +175,14 @@ export default function Home() {
     []
   );
 
-  const displayHits = activeTagFilter && tagFilterHits !== null ? tagFilterHits : hits;
+  const displayHits = useMemo(() => {
+    const source = activeTagFilter && tagFilterHits !== null ? tagFilterHits : hits;
+    return source.filter((h) => {
+      if (role !== "all" && h.role !== role) return false;
+      if (project !== "all" && h.project !== project) return false;
+      return true;
+    });
+  }, [hits, tagFilterHits, activeTagFilter, role, project]);
   const isLoading = activeTagFilter ? tagFilterLoading : loading;
   const showResults = searched || activeTagFilter;
 
