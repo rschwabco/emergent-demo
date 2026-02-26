@@ -8,6 +8,8 @@ const INDEX_NAME = "agent-traces-semantic";
 const NAMESPACE = "traces";
 const HITS_PER_PROBE = 25;
 const SNIPPETS_FOR_LLM = 10;
+const EXPANSION_QUERIES_PER_PROBE = 3;
+const EXPANSION_TOP_K = 25;
 const MODEL = "gpt-5.2";
 
 interface HitFields {
@@ -55,6 +57,40 @@ function parseHit(
 function truncateSnippet(text: string, maxLen = 300): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen).trimEnd() + "...";
+}
+
+async function generateExpandedQueries(
+  label: string,
+  description: string,
+  seedSnippets: string[]
+): Promise<string[]> {
+  const openai = getOpenAIClient();
+  const resp = await openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0.7,
+    max_completion_tokens: 300,
+    messages: [
+      {
+        role: "system",
+        content: `You generate diverse semantic search queries for finding AI coding agent behaviors in SWE-bench traces. Given a behavior pattern and example chunks that matched it, generate exactly ${EXPANSION_QUERIES_PER_PROBE} NEW search queries that would find MORE examples of this behavior from different angles. Each query should target a different aspect or variation and use different vocabulary than the original. Be specific, 10-25 words each. Return ONLY a JSON array of strings.`,
+      },
+      {
+        role: "user",
+        content: `Behavior: "${label}" — ${description}\n\nExample matching chunks:\n${seedSnippets.map((s, i) => `${i + 1}. ${s}`).join("\n\n")}`,
+      },
+    ],
+  });
+
+  const raw = resp.choices[0]?.message?.content?.trim() ?? "[]";
+  try {
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```/g, "");
+    const parsed = JSON.parse(cleaned);
+    return Array.isArray(parsed)
+      ? parsed.filter((q: unknown): q is string => typeof q === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 async function generateBehaviorInsight(
@@ -177,7 +213,7 @@ export async function GET(request: Request) {
             inputs: { text: probe.query },
           },
         });
-        return { probe, hits: results.result.hits };
+        return { probe, hits: [...results.result.hits] };
       }),
     ]);
 
@@ -186,7 +222,72 @@ export async function GET(request: Request) {
       statsResult.totalRecordCount ??
       0;
 
-    // Parse all hits
+    // Expansion is opt-in: ?expand=1 triggers query expansion
+    const shouldExpand = url.searchParams.get("expand") === "1";
+    const expandedQueriesMap = new Map<string, string[]>();
+    const seedHitCounts = new Map<string, number>();
+
+    for (const { probe, hits } of probeResults) {
+      seedHitCounts.set(probe.id, hits.length);
+    }
+
+    if (shouldExpand) {
+      // Phase 1.5: Use seed results to generate diverse expansion queries
+      const expansionQueryPromises = probeResults.map(({ probe, hits }) => {
+        const seedSnippets = hits
+          .slice(0, 5)
+          .map((h) =>
+            truncateSnippet((h.fields as HitFields).chunk_text, 200)
+          );
+        return generateExpandedQueries(
+          probe.label,
+          probe.description,
+          seedSnippets
+        );
+      });
+      const expandedQueriesPerProbe = await Promise.all(
+        expansionQueryPromises
+      );
+
+      for (let i = 0; i < probeResults.length; i++) {
+        expandedQueriesMap.set(
+          probeResults[i].probe.id,
+          expandedQueriesPerProbe[i]
+        );
+      }
+
+      // Phase 1.6: Run all expansion queries in parallel
+      const expansionResults = await Promise.all(
+        probeResults.flatMap((_pr, probeIdx) =>
+          (expandedQueriesPerProbe[probeIdx] ?? []).map(
+            async (expandedQuery) => {
+              const results = await ns.searchRecords({
+                query: {
+                  topK: EXPANSION_TOP_K,
+                  inputs: { text: expandedQuery },
+                },
+              });
+              return { probeIdx, hits: results.result.hits };
+            }
+          )
+        )
+      );
+
+      // Merge expansion hits into probe results, deduplicating within each probe
+      for (const { probeIdx, hits } of expansionResults) {
+        const existingIds = new Set(
+          probeResults[probeIdx].hits.map((h) => h._id as string)
+        );
+        for (const hit of hits) {
+          if (!existingIds.has(hit._id as string)) {
+            existingIds.add(hit._id as string);
+            probeResults[probeIdx].hits.push(hit);
+          }
+        }
+      }
+    }
+
+    // Parse all hits (cross-probe deduplication)
     const seenIds = new Set<string>();
     const allParsedHits: ParsedHit[] = [];
 
@@ -269,6 +370,8 @@ export async function GET(request: Request) {
       query: probe.query,
       insight: behaviorInsights[i],
       hitCount: parsed.length,
+      seedHitCount: seedHitCounts.get(probe.id) ?? parsed.length,
+      expandedQueries: expandedQueriesMap.get(probe.id) ?? [],
       projects,
       topHits: parsed.slice(0, 3).map((h) => ({
         id: h.id,
@@ -324,6 +427,7 @@ export async function GET(request: Request) {
 
     const responseData = {
       totalChunks,
+      expanded: shouldExpand,
       crossCuttingInsights,
       behaviors,
       projects,

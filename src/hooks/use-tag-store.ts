@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 
 export interface TagStore {
   tags: string[];
@@ -103,23 +103,40 @@ export function useTagStore(): TagStore {
 
   const syncFromHits = useCallback(
     (hits: Array<{ id: string; tags: string[] }>) => {
-      const nextAssignments: Record<string, string[]> = {
-        ...assignmentsRef.current,
-      };
-      const allTags = new Set<string>(tags);
+      const current = assignmentsRef.current;
+      let changed = false;
+      const nextAssignments: Record<string, string[]> = { ...current };
 
       for (const hit of hits) {
         const hitTags = hit.tags ?? [];
         if (hitTags.length > 0) {
-          nextAssignments[hit.id] = hitTags;
-          for (const t of hitTags) allTags.add(t);
+          const prev = current[hit.id];
+          if (!prev || prev.length !== hitTags.length || prev.some((t, i) => t !== hitTags[i])) {
+            nextAssignments[hit.id] = hitTags;
+            changed = true;
+          }
         }
       }
 
-      setAssignments(nextAssignments);
-      setTags([...allTags].sort());
+      if (changed) {
+        setAssignments(nextAssignments);
+      }
+
+      setTags((prev) => {
+        const allTags = new Set<string>(prev);
+        let added = false;
+        for (const hit of hits) {
+          for (const t of hit.tags ?? []) {
+            if (!allTags.has(t)) {
+              allTags.add(t);
+              added = true;
+            }
+          }
+        }
+        return added ? [...allTags].sort() : prev;
+      });
     },
-    [tags]
+    []
   );
 
   const assignTag = useCallback(
@@ -204,15 +221,18 @@ export function useTagStore(): TagStore {
     [assignments]
   );
 
-  return {
-    tags,
-    assignments,
-    assignTag,
-    unassignTag,
-    removeTag,
-    getTagsForHit,
-    getHitIdsForTag,
-    syncFromHits,
-    loadFromServer,
-  };
+  return useMemo(
+    () => ({
+      tags,
+      assignments,
+      assignTag,
+      unassignTag,
+      removeTag,
+      getTagsForHit,
+      getHitIdsForTag,
+      syncFromHits,
+      loadFromServer,
+    }),
+    [tags, assignments, assignTag, unassignTag, removeTag, getTagsForHit, getHitIdsForTag, syncFromHits, loadFromServer]
+  );
 }

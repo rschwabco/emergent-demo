@@ -32,10 +32,11 @@ import { TagBar, TagFilter } from "@/components/tag-bar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useTagStore } from "@/hooks/use-tag-store";
-import { ArrowLeft, Brain } from "lucide-react";
+import { ArrowLeft, Brain, Sparkles, Loader2 } from "lucide-react";
 
 interface DashboardData {
   totalChunks: number;
+  expanded: boolean;
   crossCuttingInsights: string[];
   behaviors: BehaviorData[];
   projects: ProjectData[];
@@ -56,6 +57,7 @@ export default function Home() {
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [expanding, setExpanding] = useState(false);
 
   const tagStore = useTagStore();
 
@@ -140,6 +142,32 @@ export default function Home() {
     [doSearch]
   );
 
+  const handleProjectClick = useCallback(
+    (projectName: string) => {
+      const broadQuery = "debugging testing code changes error handling";
+      setSimilarTo(null);
+      setProject(projectName);
+      projectRef.current = projectName;
+      setQuery(broadQuery);
+      doSearch(broadQuery);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [doSearch]
+  );
+
+  const handleExpandPatterns = useCallback(async () => {
+    setExpanding(true);
+    try {
+      const res = await fetch("/api/dashboard?bust=1&expand=1");
+      const data = await res.json();
+      if (!data.error) setDashboard(data);
+    } catch (err) {
+      console.error("Expansion failed:", err);
+    } finally {
+      setExpanding(false);
+    }
+  }, []);
+
   const handleSelect = useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -157,7 +185,7 @@ export default function Home() {
       tagStore.assignTag(Array.from(selectedIds), tag);
       setSelectedIds(new Set());
     },
-    [selectedIds, tagStore]
+    [selectedIds, tagStore.assignTag]
   );
 
   const handleClearSelection = useCallback(() => {
@@ -170,7 +198,7 @@ export default function Home() {
       counts[tag] = tagStore.getHitIdsForTag(tag).size;
     }
     return counts;
-  }, [tagStore]);
+  }, [tagStore.tags, tagStore.getHitIdsForTag]);
 
   const [tagFilterHits, setTagFilterHits] = useState<SearchHit[] | null>(null);
   const [tagFilterLoading, setTagFilterLoading] = useState(false);
@@ -348,13 +376,41 @@ export default function Home() {
 
           {/* Behavior pattern cards */}
           <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-              <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
-                <Brain className="size-4 text-sky-400" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
+                  <Brain className="size-4 text-sky-400" />
+                </div>
+                <h2 className="text-lg font-semibold tracking-tight">
+                  Agent Behavior Patterns
+                </h2>
+                {dashboard?.expanded && (
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                    Expanded
+                  </span>
+                )}
               </div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                Agent Behavior Patterns
-              </h2>
+              {dashboard && !dashboard.expanded && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExpandPatterns}
+                  disabled={expanding}
+                  className="gap-1.5 text-xs"
+                >
+                  {expanding ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Expanding...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-3.5" />
+                      Discover more
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {dashboardLoading
@@ -377,7 +433,7 @@ export default function Home() {
           {dashboardLoading ? (
             <ProjectBreakdownSkeleton />
           ) : dashboard?.projects ? (
-            <ProjectBreakdown projects={dashboard.projects} />
+            <ProjectBreakdown projects={dashboard.projects} onProjectClick={handleProjectClick} />
           ) : null}
 
           <Separator />

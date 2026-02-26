@@ -1,41 +1,23 @@
 "use client";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { RoleBadge } from "@/components/role-badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FolderOpen } from "lucide-react";
+import { ArrowRight, FolderOpen } from "lucide-react";
 
-const PROJECT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-  // Web frameworks (green family)
-  django:         { bg: "bg-emerald-500/10", text: "text-emerald-400", dot: "bg-emerald-500" },
-  pallets:        { bg: "bg-teal-500/10",    text: "text-teal-400",    dot: "bg-teal-500" },
-  // Data science & visualization (blue family)
-  "scikit-learn": { bg: "bg-sky-500/10",     text: "text-sky-400",     dot: "bg-sky-500" },
-  matplotlib:     { bg: "bg-blue-500/10",    text: "text-blue-400",    dot: "bg-blue-500" },
-  pydata:         { bg: "bg-indigo-500/10",  text: "text-indigo-400",  dot: "bg-indigo-500" },
-  mwaskom:        { bg: "bg-cyan-500/10",    text: "text-cyan-400",    dot: "bg-cyan-500" },
-  // Scientific computing (purple family)
-  sympy:          { bg: "bg-violet-500/10",  text: "text-violet-400",  dot: "bg-violet-500" },
-  astropy:        { bg: "bg-purple-500/10",  text: "text-purple-400",  dot: "bg-purple-500" },
-  // Developer tooling (warm family)
-  "pytest-dev":   { bg: "bg-amber-500/10",   text: "text-amber-400",   dot: "bg-amber-500" },
-  "sphinx-doc":   { bg: "bg-orange-500/10",  text: "text-orange-400",  dot: "bg-orange-500" },
-  // Community (neutral)
-  psf:            { bg: "bg-slate-500/10",   text: "text-slate-400",   dot: "bg-slate-500" },
+const PROJECT_COLORS: Record<string, { dot: string; text: string }> = {
+  django:         { dot: "bg-emerald-500", text: "text-emerald-400" },
+  pallets:        { dot: "bg-teal-500",    text: "text-teal-400" },
+  "scikit-learn": { dot: "bg-sky-500",     text: "text-sky-400" },
+  matplotlib:     { dot: "bg-blue-500",    text: "text-blue-400" },
+  pydata:         { dot: "bg-indigo-500",  text: "text-indigo-400" },
+  mwaskom:        { dot: "bg-cyan-500",    text: "text-cyan-400" },
+  sympy:          { dot: "bg-violet-500",  text: "text-violet-400" },
+  astropy:        { dot: "bg-purple-500",  text: "text-purple-400" },
+  "pytest-dev":   { dot: "bg-amber-500",   text: "text-amber-400" },
+  "sphinx-doc":   { dot: "bg-orange-500",  text: "text-orange-400" },
+  psf:            { dot: "bg-slate-500",   text: "text-slate-400" },
 };
 
-const DEFAULT_COLOR = { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground" };
-
-function truncate(text: string, maxLen = 100) {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen).trimEnd() + "...";
-}
+const DEFAULT_COLOR = { dot: "bg-muted-foreground", text: "text-muted-foreground" };
 
 interface ProjectHit {
   id: unknown;
@@ -59,8 +41,10 @@ export interface ProjectData {
 
 export function ProjectBreakdown({
   projects,
+  onProjectClick,
 }: {
   projects: ProjectData[];
+  onProjectClick?: (projectName: string) => void;
 }) {
   if (projects.length === 0) return null;
 
@@ -74,57 +58,24 @@ export function ProjectBreakdown({
           By Project
         </h2>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {projects.map((project) => {
           const colors = PROJECT_COLORS[project.name] ?? DEFAULT_COLOR;
           return (
-            <Card key={project.name} className="py-3">
-              <CardHeader className="gap-1 pb-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`size-2 rounded-full ${colors.dot}`} />
-                    <CardTitle className={`text-sm capitalize ${colors.text}`}>
-                      {project.name}
-                    </CardTitle>
-                  </div>
-                  <Badge variant="outline" className="text-[10px]">
-                    {project.hitCount}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {project.narrative && (
-                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                    {project.narrative}
-                  </p>
-                )}
-
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {project.topBehaviors.map((behavior) => (
-                    <span
-                      key={behavior}
-                      className={`rounded px-1.5 py-0.5 text-[10px] ${colors.bg} ${colors.text}`}
-                    >
-                      {behavior}
-                    </span>
-                  ))}
-                </div>
-
-                {project.topHit && (
-                  <div className="bg-muted/40 mt-2 rounded-md px-2.5 py-1.5 text-[11px]">
-                    <div className="mb-0.5 flex items-center gap-1.5">
-                      <RoleBadge role={project.topHit.role} />
-                      <span className="text-muted-foreground">
-                        {project.topHit.issue}
-                      </span>
-                    </div>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {truncate(project.topHit.chunkText)}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <button
+              key={project.name}
+              onClick={() => onProjectClick?.(project.name)}
+              className="group flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:border-ring/50"
+            >
+              <span className={`size-2.5 shrink-0 rounded-full ${colors.dot}`} />
+              <span className={`flex-1 text-sm font-medium capitalize ${colors.text}`}>
+                {project.name}
+              </span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {project.hitCount}
+              </span>
+              <ArrowRight className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+            </button>
           );
         })}
       </div>
@@ -139,27 +90,13 @@ export function ProjectBreakdownSkeleton() {
         <Skeleton className="size-7 rounded-lg" />
         <Skeleton className="h-5 w-24" />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} className="py-3">
-            <CardHeader className="gap-1 pb-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Skeleton className="size-2 rounded-full" />
-                  <Skeleton className="h-4 w-20" />
-                </div>
-                <Skeleton className="h-5 w-8 rounded-full" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="mt-1 h-8 w-full" />
-              <div className="mt-2 flex gap-1">
-                {Array.from({ length: 2 }).map((_, j) => (
-                  <Skeleton key={j} className="h-4 w-16 rounded" />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
+            <Skeleton className="size-2.5 rounded-full" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="ml-auto h-4 w-8" />
+          </div>
         ))}
       </div>
     </div>
