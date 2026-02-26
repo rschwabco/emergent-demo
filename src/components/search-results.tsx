@@ -231,6 +231,9 @@ function ResultCard({
   };
 
   const handleCardClick = () => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) return;
+
     if (selectionActive) {
       onSelect(hit.id, !selected);
     } else {

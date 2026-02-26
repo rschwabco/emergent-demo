@@ -119,6 +119,10 @@ async function keywordSearch(
   return (data.matches ?? []).map((match: Record<string, unknown>) => {
     const traceId = (match[".trace_id"] as string) ?? (match[".source_id"] as string) ?? "";
     const parts = traceId.replace(".json", "").split("__");
+    const rawTags = match[".tags"];
+    const tags: string[] = Array.isArray(rawTags)
+      ? rawTags.filter((t): t is string => typeof t === "string")
+      : [];
     return {
       id: match.id as string,
       score: match.score as number,
@@ -129,7 +133,7 @@ async function keywordSearch(
       chunkIndex: (match[".content.chunk_index"] as number) ?? 0,
       project: (match[".project"] as string) || parts[0] || "",
       issue: (match[".title"] as string) || parts[1] || "",
-      tags: [],
+      tags,
     };
   });
 }

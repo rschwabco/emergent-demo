@@ -48,14 +48,24 @@ function writeLocalAssignments(assignments: Record<string, string[]>) {
   } catch { /* quota exceeded, ignore */ }
 }
 
-function persistToPinecone(updates: Array<{ id: string; tags: string[] }>, indexName?: string) {
-  const body: Record<string, unknown> = { updates };
-  if (indexName) body.indexName = indexName;
-  fetch("/api/tags", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch((err) => console.error("Failed to persist tags to Pinecone:", err));
+async function persistToPinecone(
+  updates: Array<{ id: string; tags: string[] }>,
+  indexName?: string
+): Promise<boolean> {
+  try {
+    const body: Record<string, unknown> = { updates };
+    if (indexName) body.indexName = indexName;
+    const res = await fetch("/api/tags", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return true;
+  } catch (err) {
+    console.error("Failed to persist tags to Pinecone:", err);
+    return false;
+  }
 }
 
 export function useTagStore(): TagStore {
@@ -153,41 +163,85 @@ export function useTagStore(): TagStore {
       const normalized = tag.trim().toLowerCase();
       if (!normalized) return;
 
+      const prevAssignments = assignmentsRef.current;
+      const snapshot: Record<string, string[] | undefined> = {};
+      for (const id of hitIds) {
+        snapshot[id] = prevAssignments[id] ? [...prevAssignments[id]] : undefined;
+      }
+
+      const isNewTag = !assignmentsRef.current
+        ? true
+        : !Object.values(assignmentsRef.current).some((tags) =>
+            tags.includes(normalized)
+          );
+
       setTags((prev) => {
         if (prev.includes(normalized)) return prev;
         return [...prev, normalized].sort();
       });
 
-      setAssignments((prev) => {
-        const next = { ...prev };
-        const updates: Array<{ id: string; tags: string[] }> = [];
-
-        for (const id of hitIds) {
-          const existing = next[id] || [];
-          if (!existing.includes(normalized)) {
-            next[id] = [...existing, normalized];
-          } else {
-            next[id] = existing;
-          }
-          updates.push({ id, tags: next[id] });
+      const updates: Array<{ id: string; tags: string[] }> = [];
+      const nextAssignments = { ...prevAssignments };
+      for (const id of hitIds) {
+        const existing = nextAssignments[id] || [];
+        if (!existing.includes(normalized)) {
+          nextAssignments[id] = [...existing, normalized];
         }
+        updates.push({ id, tags: nextAssignments[id] });
+      }
+      setAssignments(nextAssignments);
 
-        persistToPinecone(updates, indexNameRef.current);
-        return next;
+      persistToPinecone(updates, indexNameRef.current).then((ok) => {
+        if (ok) return;
+        setAssignments((prev) => {
+          const reverted = { ...prev };
+          for (const id of hitIds) {
+            const original = snapshot[id];
+            if (original === undefined) {
+              delete reverted[id];
+            } else {
+              reverted[id] = original;
+            }
+          }
+          return reverted;
+        });
+        if (isNewTag) {
+          setTags((prev) => {
+            const stillUsed = Object.values(assignmentsRef.current).some(
+              (tags) => tags.includes(normalized)
+            );
+            if (stillUsed) return prev;
+            return prev.filter((t) => t !== normalized);
+          });
+        }
       });
     },
     []
   );
 
   const unassignTag = useCallback((hitId: string, tag: string) => {
-    setAssignments((prev) => {
-      const next = { ...prev };
-      if (next[hitId]) {
-        next[hitId] = next[hitId].filter((t) => t !== tag);
-        if (next[hitId].length === 0) delete next[hitId];
-      }
-      persistToPinecone([{ id: hitId, tags: next[hitId] || [] }], indexNameRef.current);
-      return next;
+    const snapshotTags = assignmentsRef.current[hitId]
+      ? [...assignmentsRef.current[hitId]]
+      : [];
+
+    const newTags = snapshotTags.filter((t) => t !== tag);
+    const nextAssignments = { ...assignmentsRef.current };
+    if (newTags.length === 0) {
+      delete nextAssignments[hitId];
+    } else {
+      nextAssignments[hitId] = newTags;
+    }
+    setAssignments(nextAssignments);
+
+    persistToPinecone(
+      [{ id: hitId, tags: newTags }],
+      indexNameRef.current
+    ).then((ok) => {
+      if (ok) return;
+      setAssignments((prev) => ({
+        ...prev,
+        [hitId]: snapshotTags,
+      }));
     });
   }, []);
 

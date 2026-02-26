@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SearchBar } from "@/components/search-bar";
-import { FilterPanel } from "@/components/filter-panel";
+import { FacetPanel, applyFacetFilters, type FacetSelection } from "@/components/facet-panel";
 import { SearchResults, type SearchHit } from "@/components/search-results";
 import {
   BehaviorCard,
@@ -29,7 +29,7 @@ import {
 } from "@/components/role-distribution";
 import { ResultsSummary } from "@/components/results-summary";
 import { SummaryJobTracker } from "@/components/summary-job-tracker";
-import { TagBar, TagFilter } from "@/components/tag-bar";
+import { TagBar } from "@/components/tag-bar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useTagStore } from "@/hooks/use-tag-store";
@@ -74,15 +74,13 @@ export default function IndexDashboard() {
   const activeIndex = decodeURIComponent(params.indexName);
 
   const [query, setQuery] = useState("");
-  const [role, setRole] = useState("all");
-  const [project, setProject] = useState("all");
+  const [facetSelection, setFacetSelection] = useState<FacetSelection>({});
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [similarTo, setSimilarTo] = useState<SearchHit | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
 
   const [indexes, setIndexes] = useState<PineconeIndex[]>([]);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -95,10 +93,6 @@ export default function IndexDashboard() {
 
   const tagStore = useTagStore();
 
-  const roleRef = useRef(role);
-  roleRef.current = role;
-  const projectRef = useRef(project);
-  projectRef.current = project;
   const activeIndexRef = useRef(activeIndex);
   activeIndexRef.current = activeIndex;
   const syncFromHitsRef = useRef(tagStore.syncFromHits);
@@ -188,17 +182,13 @@ export default function IndexDashboard() {
     setLoading(true);
     setSearched(true);
     setSelectedIds(new Set());
+    setFacetSelection({});
     try {
-      const filters: Record<string, string> = {};
-      if (roleRef.current !== "all") filters.role = roleRef.current;
-      if (projectRef.current !== "all") filters.project = projectRef.current;
-
       const body: Record<string, unknown> = {
         query: searchQuery.trim(),
         topK: 15,
         indexName: activeIndexRef.current,
       };
-      if (Object.keys(filters).length > 0) body.filters = filters;
 
       const res = await fetch("/api/hybrid-search", {
         method: "POST",
@@ -255,8 +245,7 @@ export default function IndexDashboard() {
     (projectName: string) => {
       const broadQuery = "debugging testing code changes error handling";
       setSimilarTo(null);
-      setProject(projectName);
-      projectRef.current = projectName;
+      setFacetSelection({ project: new Set([projectName]) });
       setQuery(broadQuery);
       doSearch(broadQuery);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -306,60 +295,46 @@ export default function IndexDashboard() {
     setSelectedIds(new Set());
   }, []);
 
-  const tagCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const tag of tagStore.tags) {
-      counts[tag] = tagStore.getHitIdsForTag(tag).size;
+  const behaviorHits = useMemo(() => {
+    if (!dashboard?.behaviors) return [];
+    const seen = new Set<string>();
+    const all: SearchHit[] = [];
+    for (const behavior of dashboard.behaviors) {
+      for (const hit of behavior.hits) {
+        if (!seen.has(hit.id)) {
+          seen.add(hit.id);
+          all.push({ ...hit, tags: [] });
+        }
+      }
     }
-    return counts;
-  }, [tagStore.tags, tagStore.getHitIdsForTag]);
+    return all;
+  }, [dashboard?.behaviors]);
 
-  const [tagFilterHits, setTagFilterHits] = useState<SearchHit[] | null>(null);
-  const [tagFilterLoading, setTagFilterLoading] = useState(false);
+  const facetHits = searched ? hits : behaviorHits;
 
-  const handleTagFilter = useCallback(
-    async (tag: string | null) => {
-      setActiveTagFilter(tag);
-      setSelectedIds(new Set());
-
-      if (!tag) {
-        setTagFilterHits(null);
-        return;
-      }
-
-      setTagFilterLoading(true);
-      try {
-        const res = await fetch("/api/tags/filter", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tag, indexName: activeIndexRef.current }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setTagFilterHits(data.hits);
-        setSearchedQuery(`tag:${tag}`);
-        syncFromHitsRef.current(data.hits);
-      } catch (err) {
-        console.error("Tag filter failed:", err);
-        setTagFilterHits([]);
-        setSearchedQuery("");
-      } finally {
-        setTagFilterLoading(false);
-      }
-    },
-    []
-  );
-
-  const displayHits = useMemo(() => {
-    const source = activeTagFilter && tagFilterHits !== null ? tagFilterHits : hits;
-    return source.filter((h) => {
-      if (role !== "all" && h.role !== role) return false;
-      if (project !== "all" && h.project !== project) return false;
-      return true;
+  const enrichedFacetHits = useMemo(() => {
+    return facetHits.map((hit) => {
+      const storeTags = tagStore.getTagsForHit(hit.id);
+      if (storeTags.length === 0 && hit.tags.length === 0) return hit;
+      const merged = [...new Set([...hit.tags, ...storeTags])];
+      return { ...hit, tags: merged };
     });
-  }, [hits, tagFilterHits, activeTagFilter, role, project]);
-  const isLoading = activeTagFilter ? tagFilterLoading : loading;
-  const showResults = searched || activeTagFilter;
+  }, [facetHits, tagStore.getTagsForHit]);
+
+  const enrichedHits = useMemo(() => {
+    return hits.map((hit) => {
+      const storeTags = tagStore.getTagsForHit(hit.id);
+      if (storeTags.length === 0 && hit.tags.length === 0) return hit;
+      const merged = [...new Set([...hit.tags, ...storeTags])];
+      return { ...hit, tags: merged };
+    });
+  }, [hits, tagStore.getTagsForHit]);
+
+  const displayHits = useMemo(
+    () => applyFacetFilters(enrichedHits, facetSelection),
+    [enrichedHits, facetSelection]
+  );
+  const showResults = searched;
 
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10">
@@ -452,21 +427,13 @@ export default function IndexDashboard() {
           onSearch={handleSearch}
           loading={loading}
         />
-        <FilterPanel
-          role={role}
-          onRoleChange={setRole}
-          {...(activeIndex === "agent-traces-semantic" && {
-            project,
-            onProjectChange: setProject,
-            showProjects: true,
+        <FacetPanel
+          hits={enrichedFacetHits}
+          selection={facetSelection}
+          onSelectionChange={setFacetSelection}
+          {...(activeIndex !== "agent-traces-semantic" && {
+            hiddenFacets: ["project"],
           })}
-        />
-        <TagFilter
-          tags={tagStore.tags}
-          activeTag={activeTagFilter}
-          onTagFilter={handleTagFilter}
-          tagCounts={tagCounts}
-          onDeleteTag={tagStore.removeTag}
         />
       </div>
 
@@ -478,8 +445,6 @@ export default function IndexDashboard() {
             setHits([]);
             setSearched(false);
             setSearchedQuery("");
-            setActiveTagFilter(null);
-            setTagFilterHits(null);
           }}
           className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
         >
@@ -515,21 +480,19 @@ export default function IndexDashboard() {
         </div>
       )}
 
-      {showResults && !isLoading && displayHits.length === 0 && (
+      {showResults && !loading && displayHits.length === 0 && (
         <div className="text-muted-foreground py-12 text-center text-sm">
-          {activeTagFilter
-            ? `No records tagged "${activeTagFilter}".`
-            : "No results found. Try a different query or adjust filters."}
+          No results found. Try a different query or adjust filters.
         </div>
       )}
 
-      {showResults && !isLoading && displayHits.length > 0 && (
+      {showResults && !loading && displayHits.length > 0 && (
         <ResultsSummary query={searchedQuery} hits={displayHits} />
       )}
 
       <SearchResults
         hits={displayHits}
-        loading={isLoading}
+        loading={loading}
         onFindSimilar={handleFindSimilar}
         selectedIds={selectedIds}
         onSelect={handleSelect}
