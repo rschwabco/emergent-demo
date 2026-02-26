@@ -111,11 +111,7 @@ export function BehaviorCard({
 
         <div className="mt-auto flex items-center justify-between pt-4 text-xs text-muted-foreground">
           <span>
-            {behavior.seedHitCount != null && behavior.seedHitCount < behavior.hitCount ? (
-              <>{behavior.seedHitCount} &rarr; {behavior.hitCount} chunks</>
-            ) : (
-              <>{behavior.hitCount} chunks</>
-            )}
+            {behavior.hitCount} chunks
             {behavior.projects && <>{" "}&middot; {behavior.projects.length} projects</>}
           </span>
           <span className="flex items-center gap-1 transition-colors group-hover:text-foreground">

@@ -1,220 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
-
-const DEFAULT_SEMANTIC_INDEX = "agent-traces-semantic";
-const DEFAULT_KEYWORD_INDEX = "agent-traces";
-const DEFAULT_NAMESPACE = "traces";
-const CONTENT_TEXT_FIELD = ".content.text";
-const DOCUMENTS_API_VERSION = "2026-01.alpha";
-
-const RRF_K = 60;
-
-const hostCache = new Map<string, string>();
-
-async function getKeywordIndexHost(keywordIndex: string): Promise<string> {
-  const cached = hostCache.get(keywordIndex);
-  if (cached) return cached;
-  const pc = getPineconeClient();
-  const desc = await pc.describeIndex(keywordIndex);
-  hostCache.set(keywordIndex, desc.host);
-  return desc.host;
-}
-
-interface RawHit {
-  id: string;
-  score: number;
-  chunkText: string;
-  role: string;
-  traceId: string;
-  turnIndex: number;
-  chunkIndex: number;
-  project: string;
-  issue: string;
-  tags: string[];
-}
-
-async function semanticSearch(
-  query: string,
-  topK: number,
-  filter: Record<string, unknown>,
-  semanticIndex: string,
-  namespace: string
-): Promise<RawHit[]> {
-  const pc = getPineconeClient();
-  const ns = pc.index(semanticIndex).namespace(namespace);
-
-  const searchOptions: Parameters<typeof ns.searchRecords>[0] = {
-    query: {
-      topK,
-      inputs: { text: query },
-      ...(Object.keys(filter).length > 0 && { filter }),
-    },
-  };
-
-  const results = await ns.searchRecords(searchOptions);
-
-  return results.result.hits.map((hit) => {
-    const fields = hit.fields as Record<string, unknown>;
-    const traceId = (fields.trace_id as string) ?? (fields.source_id as string) ?? "";
-    const parts = traceId.replace(".json", "").split("__");
-    const rawTags = fields.tags;
-    const tags: string[] = Array.isArray(rawTags)
-      ? rawTags.filter((t): t is string => typeof t === "string")
-      : [];
-    return {
-      id: hit._id,
-      score: hit._score,
-      chunkText: (fields.chunk_text as string) ?? "",
-      role: (fields.role as string) ?? "unknown",
-      traceId,
-      turnIndex: (fields.turn_index as number) ?? 0,
-      chunkIndex: (fields.chunk_index as number) ?? 0,
-      project: (fields.project as string) || parts[0] || "",
-      issue: (fields.title as string) || parts[1] || "",
-      tags,
-    };
-  });
-}
-
-async function keywordSearch(
-  query: string,
-  topK: number,
-  filter: Record<string, unknown>,
-  keywordIndex: string,
-  namespace: string
-): Promise<RawHit[]> {
-  const host = await getKeywordIndexHost(keywordIndex);
-  const apiKey = process.env.PINECONE_API_KEY!;
-
-  const kwFilter: Record<string, unknown> = {};
-  if (filter.role) kwFilter[".role"] = filter.role;
-  if (filter.trace_id) kwFilter[".trace_id"] = filter.trace_id;
-
-  const luceneQuery = `${CONTENT_TEXT_FIELD}:(${query})`;
-  const requestBody: Record<string, unknown> = {
-    top_k: topK,
-    score_by: [{ type: "query_string", query: luceneQuery }],
-    include_fields: ["*"],
-  };
-  if (Object.keys(kwFilter).length > 0) {
-    requestBody.filter = kwFilter;
-  }
-
-  const res = await fetch(
-    `https://${host}/namespaces/${namespace}/documents/search`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Api-Key": apiKey,
-        "X-Pinecone-Api-Version": DOCUMENTS_API_VERSION,
-      },
-      body: JSON.stringify(requestBody),
-    }
-  );
-
-  if (!res.ok) return [];
-
-  const data = await res.json();
-  return (data.matches ?? []).map((match: Record<string, unknown>) => {
-    const traceId = (match[".trace_id"] as string) ?? (match[".source_id"] as string) ?? "";
-    const parts = traceId.replace(".json", "").split("__");
-    const rawTags = match[".tags"];
-    const tags: string[] = Array.isArray(rawTags)
-      ? rawTags.filter((t): t is string => typeof t === "string")
-      : [];
-    return {
-      id: match.id as string,
-      score: match.score as number,
-      chunkText: (match[".content.text"] as string) ?? "",
-      role: (match[".role"] as string) ?? "unknown",
-      traceId,
-      turnIndex: (match[".turn_index"] as number) ?? 0,
-      chunkIndex: (match[".content.chunk_index"] as number) ?? 0,
-      project: (match[".project"] as string) || parts[0] || "",
-      issue: (match[".title"] as string) || parts[1] || "",
-      tags,
-    };
-  });
-}
-
-function reciprocalRankFusion(
-  semanticHits: RawHit[],
-  keywordHits: RawHit[],
-  limit: number
-) {
-  const merged = new Map<
-    string,
-    {
-      hit: RawHit;
-      rrfScore: number;
-      sources: string[];
-      semanticRank: number | null;
-      keywordRank: number | null;
-      semanticScore: number | null;
-      keywordScore: number | null;
-    }
-  >();
-
-  for (let i = 0; i < semanticHits.length; i++) {
-    const hit = semanticHits[i];
-    const rrfScore = 1 / (RRF_K + i + 1);
-    merged.set(hit.id, {
-      hit,
-      rrfScore,
-      sources: ["semantic"],
-      semanticRank: i + 1,
-      keywordRank: null,
-      semanticScore: hit.score,
-      keywordScore: null,
-    });
-  }
-
-  for (let i = 0; i < keywordHits.length; i++) {
-    const hit = keywordHits[i];
-    const rrfContribution = 1 / (RRF_K + i + 1);
-    const existing = merged.get(hit.id);
-    if (existing) {
-      existing.rrfScore += rrfContribution;
-      existing.sources.push("keyword");
-      existing.keywordRank = i + 1;
-      existing.keywordScore = hit.score;
-      if (existing.hit.tags.length === 0 && hit.tags.length > 0) {
-        existing.hit.tags = hit.tags;
-      }
-    } else {
-      merged.set(hit.id, {
-        hit,
-        rrfScore: rrfContribution,
-        sources: ["keyword"],
-        semanticRank: null,
-        keywordRank: i + 1,
-        semanticScore: null,
-        keywordScore: hit.score,
-      });
-    }
-  }
-
-  const sorted = [...merged.values()].sort((a, b) => b.rrfScore - a.rrfScore);
-
-  return sorted.slice(0, limit).map((entry) => ({
-    ...entry.hit,
-    score: entry.rrfScore,
-    sources: entry.sources,
-    semanticRank: entry.semanticRank,
-    keywordRank: entry.keywordRank,
-    semanticScore: entry.semanticScore,
-    keywordScore: entry.keywordScore,
-  }));
-}
+import { resolveNamespace } from "@/lib/pinecone";
+import {
+  DEFAULT_SEMANTIC_INDEX,
+  DEFAULT_KEYWORD_INDEX,
+  DEFAULT_NAMESPACE,
+  semanticSearch,
+  keywordSearch,
+  reciprocalRankFusion,
+  deduplicateByTurn,
+  rerankHits,
+  buildFilter,
+} from "@/lib/search";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { query, topK = 15, filters, indexName, keywordIndexName, namespace } = body as {
+    const {
+      query,
+      topK = 15,
+      filters,
+      rerank = true,
+      indexName,
+      keywordIndexName,
+      namespace,
+    } = body as {
       query: string;
       topK?: number;
       filters?: { role?: string; project?: string };
+      rerank?: boolean;
       indexName?: string;
       keywordIndexName?: string;
       namespace?: string;
@@ -222,7 +35,8 @@ export async function POST(request: NextRequest) {
 
     const semanticIdx = indexName || DEFAULT_SEMANTIC_INDEX;
     const keywordIdx = keywordIndexName || DEFAULT_KEYWORD_INDEX;
-    const ns = namespace ?? await resolveNamespace(semanticIdx, DEFAULT_NAMESPACE);
+    const ns =
+      namespace ?? (await resolveNamespace(semanticIdx, DEFAULT_NAMESPACE));
 
     if (!query?.trim()) {
       return NextResponse.json(
@@ -232,13 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmed = query.trim();
-
-    const semanticFilter: Record<string, unknown> = {};
-    if (filters?.role) semanticFilter.role = { $eq: filters.role };
-    if (filters?.project)
-      semanticFilter.trace_id = { $regex: `^${filters.project}__` };
-
-    const perSourceK = Math.max(topK * 2, 20);
+    const semanticFilter = buildFilter(filters);
+    const perSourceK = Math.max(topK * 4, 40);
 
     const [semanticHits, keywordHits] = await Promise.allSettled([
       semanticSearch(trimmed, perSourceK, semanticFilter, semanticIdx, ns),
@@ -250,7 +59,13 @@ export async function POST(request: NextRequest) {
     const kHits =
       keywordHits.status === "fulfilled" ? keywordHits.value : [];
 
-    const hits = reciprocalRankFusion(sHits, kHits, topK);
+    const rrfLimit = rerank ? Math.max(topK * 3, 30) : topK;
+    const rrfHits = reciprocalRankFusion(sHits, kHits, rrfLimit);
+    const deduped = deduplicateByTurn(rrfHits);
+
+    const hits = rerank
+      ? await rerankHits(trimmed, deduped, topK)
+      : deduped.slice(0, topK);
 
     return NextResponse.json({
       hits,
@@ -258,6 +73,7 @@ export async function POST(request: NextRequest) {
         semanticCount: sHits.length,
         keywordCount: kHits.length,
         mergedCount: hits.length,
+        reranked: rerank,
       },
     });
   } catch (error) {

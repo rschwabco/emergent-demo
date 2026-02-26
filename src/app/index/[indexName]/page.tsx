@@ -48,7 +48,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Brain, Sparkles, Loader2, Upload, Database, Trash2 } from "lucide-react";
+import { ArrowLeft, BarChart3, Brain, Sparkles, Loader2, Upload, Database, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 interface DashboardData {
@@ -81,6 +81,7 @@ export default function IndexDashboard() {
   const [searchedQuery, setSearchedQuery] = useState("");
   const [similarTo, setSimilarTo] = useState<SearchHit | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [queryRewrites, setQueryRewrites] = useState<string[]>([]);
 
   const [indexes, setIndexes] = useState<PineconeIndex[]>([]);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -183,6 +184,7 @@ export default function IndexDashboard() {
     setSearched(true);
     setSelectedIds(new Set());
     setFacetSelection({});
+    setQueryRewrites([]);
     try {
       const body: Record<string, unknown> = {
         query: searchQuery.trim(),
@@ -190,7 +192,7 @@ export default function IndexDashboard() {
         indexName: activeIndexRef.current,
       };
 
-      const res = await fetch("/api/hybrid-search", {
+      const res = await fetch("/api/enhanced-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -199,11 +201,13 @@ export default function IndexDashboard() {
       if (data.error) throw new Error(data.error);
       setHits(data.hits);
       setSearchedQuery(searchQuery.trim());
+      setQueryRewrites(data.rewrites ?? []);
       syncFromHitsRef.current(data.hits);
     } catch (err) {
       console.error("Search failed:", err);
       setHits([]);
       setSearchedQuery("");
+      setQueryRewrites([]);
     } finally {
       setLoading(false);
     }
@@ -213,6 +217,15 @@ export default function IndexDashboard() {
     setSimilarTo(null);
     doSearch(query);
   }, [query, doSearch]);
+
+  const handleSuggestedQuery = useCallback(
+    (sq: string) => {
+      setSimilarTo(null);
+      setQuery(sq);
+      doSearch(sq);
+    },
+    [doSearch]
+  );
 
   const handleFindSimilar = useCallback(
     (hit: SearchHit) => {
@@ -370,6 +383,12 @@ export default function IndexDashboard() {
               Delete Index
             </Button>
           )}
+          <Link href="/compare">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Compare
+            </Button>
+          </Link>
           <Link href="/upload">
             <Button variant="outline" size="sm" className="gap-1.5">
               <Upload className="h-3.5 w-3.5" />
@@ -425,7 +444,9 @@ export default function IndexDashboard() {
           query={query}
           onQueryChange={setQuery}
           onSearch={handleSearch}
+          onSuggestedQuery={handleSuggestedQuery}
           loading={loading}
+          showSuggestions={!showResults}
         />
         <FacetPanel
           hits={enrichedFacetHits}
@@ -445,12 +466,25 @@ export default function IndexDashboard() {
             setHits([]);
             setSearched(false);
             setSearchedQuery("");
+            setQueryRewrites([]);
           }}
           className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
         >
           <ArrowLeft className="size-3.5" />
           Back to Dashboard
         </button>
+      )}
+
+      {queryRewrites.length > 0 && searched && !loading && (
+        <p className="text-muted-foreground text-xs">
+          Also searched for:{" "}
+          {queryRewrites.map((rw, i) => (
+            <span key={i}>
+              {i > 0 && " · "}
+              <span className="italic">&ldquo;{rw}&rdquo;</span>
+            </span>
+          ))}
+        </p>
       )}
 
       {similarTo && (
