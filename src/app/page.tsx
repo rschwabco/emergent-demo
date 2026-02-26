@@ -135,11 +135,17 @@ export default function Home() {
     (behavior: BehaviorData) => {
       setSimilarTo(null);
       setQuery(behavior.query);
-      const searchText = behavior.topHits[0]?.chunkText ?? behavior.query;
-      doSearch(searchText);
+      setSearchedQuery(behavior.label);
+      setSearched(true);
+      setHits(
+        behavior.hits.map((h) => ({
+          ...h,
+          tags: [],
+        }))
+      );
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [doSearch]
+    []
   );
 
   const handleProjectClick = useCallback(

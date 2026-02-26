@@ -373,9 +373,9 @@ export async function GET(request: Request) {
       seedHitCount: seedHitCounts.get(probe.id) ?? parsed.length,
       expandedQueries: expandedQueriesMap.get(probe.id) ?? [],
       projects,
-      topHits: parsed.slice(0, 3).map((h) => ({
-        id: h.id,
-        score: h.score,
+      hits: parsed.map((h) => ({
+        id: h.id as string,
+        score: h.score as number,
         chunkText: h.chunkText,
         role: h.role,
         traceId: h.traceId,

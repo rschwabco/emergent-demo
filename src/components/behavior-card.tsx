@@ -38,9 +38,9 @@ const BEHAVIOR_THEME: Record<string, { icon: LucideIcon; color: string; bg: stri
 
 const DEFAULT_THEME = { icon: Code2, color: "text-muted-foreground", bg: "bg-muted", border: "border-l-muted" };
 
-interface BehaviorHit {
-  id: unknown;
-  score: unknown;
+export interface BehaviorHit {
+  id: string;
+  score: number;
   chunkText: string;
   role: string;
   traceId: string;
@@ -60,7 +60,7 @@ export interface BehaviorData {
   seedHitCount?: number;
   expandedQueries?: string[];
   projects: string[];
-  topHits: BehaviorHit[];
+  hits: BehaviorHit[];
 }
 
 export function BehaviorCard({
