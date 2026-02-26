@@ -142,6 +142,8 @@ function reciprocalRankFusion(
       sources: string[];
       semanticRank: number | null;
       keywordRank: number | null;
+      semanticScore: number | null;
+      keywordScore: number | null;
     }
   >();
 
@@ -154,6 +156,8 @@ function reciprocalRankFusion(
       sources: ["semantic"],
       semanticRank: i + 1,
       keywordRank: null,
+      semanticScore: hit.score,
+      keywordScore: null,
     });
   }
 
@@ -165,6 +169,7 @@ function reciprocalRankFusion(
       existing.rrfScore += rrfContribution;
       existing.sources.push("keyword");
       existing.keywordRank = i + 1;
+      existing.keywordScore = hit.score;
       if (existing.hit.tags.length === 0 && hit.tags.length > 0) {
         existing.hit.tags = hit.tags;
       }
@@ -175,6 +180,8 @@ function reciprocalRankFusion(
         sources: ["keyword"],
         semanticRank: null,
         keywordRank: i + 1,
+        semanticScore: null,
+        keywordScore: hit.score,
       });
     }
   }
@@ -187,6 +194,8 @@ function reciprocalRankFusion(
     sources: entry.sources,
     semanticRank: entry.semanticRank,
     keywordRank: entry.keywordRank,
+    semanticScore: entry.semanticScore,
+    keywordScore: entry.keywordScore,
   }));
 }
 

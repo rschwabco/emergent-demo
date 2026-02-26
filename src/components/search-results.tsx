@@ -59,6 +59,8 @@ export interface SearchHit {
   sources?: string[];
   semanticRank?: number | null;
   keywordRank?: number | null;
+  semanticScore?: number | null;
+  keywordScore?: number | null;
 }
 
 interface ContextTurn {
@@ -72,41 +74,52 @@ function truncate(text: string, maxLen = 280) {
   return text.slice(0, maxLen).trimEnd() + "...";
 }
 
+function formatScore(score: number | null | undefined): string | null {
+  if (score == null) return null;
+  if (score >= 1) return score.toFixed(1);
+  return score.toFixed(3);
+}
+
 function SourceBadges({ hit }: { hit: SearchHit }) {
   const sources = hit.sources ?? [];
   if (sources.length === 0) return null;
+
+  const semScore = formatScore(hit.semanticScore);
+  const kwScore = formatScore(hit.keywordScore);
 
   return (
     <span className="inline-flex items-center gap-1">
       {sources.includes("semantic") && (
         <span
           className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300"
-          title={
-            hit.semanticRank != null
-              ? `Semantic rank #${hit.semanticRank}`
-              : "Found via semantic search"
-          }
+          title={[
+            hit.semanticRank != null ? `Rank #${hit.semanticRank}` : null,
+            semScore != null ? `Score ${semScore}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Found via semantic search"}
         >
           <Brain className="size-2.5" />
           semantic
-          {hit.semanticRank != null && (
-            <span className="tabular-nums">#{hit.semanticRank}</span>
+          {semScore != null && (
+            <span className="tabular-nums opacity-75">{semScore}</span>
           )}
         </span>
       )}
       {sources.includes("keyword") && (
         <span
           className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300"
-          title={
-            hit.keywordRank != null
-              ? `Keyword rank #${hit.keywordRank}`
-              : "Found via keyword search"
-          }
+          title={[
+            hit.keywordRank != null ? `Rank #${hit.keywordRank}` : null,
+            kwScore != null ? `Score ${kwScore}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Found via keyword search"}
         >
           <Type className="size-2.5" />
           keyword
-          {hit.keywordRank != null && (
-            <span className="tabular-nums">#{hit.keywordRank}</span>
+          {kwScore != null && (
+            <span className="tabular-nums opacity-75">{kwScore}</span>
           )}
         </span>
       )}

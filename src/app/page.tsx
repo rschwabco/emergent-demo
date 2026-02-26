@@ -5,14 +5,40 @@ import { SearchBar } from "@/components/search-bar";
 import { FilterPanel } from "@/components/filter-panel";
 import { SearchResults, type SearchHit } from "@/components/search-results";
 import {
-  TopicCard,
-  TopicCardSkeleton,
-  type TopicData,
-} from "@/components/topic-card";
+  BehaviorCard,
+  BehaviorCardSkeleton,
+  type BehaviorData,
+} from "@/components/behavior-card";
+import {
+  DashboardStats,
+  DashboardStatsSkeleton,
+} from "@/components/dashboard-stats";
+import {
+  CrossCuttingInsights,
+  CrossCuttingInsightsSkeleton,
+} from "@/components/cross-cutting-insights";
+import {
+  ProjectBreakdown,
+  ProjectBreakdownSkeleton,
+  type ProjectData,
+} from "@/components/project-breakdown";
+import {
+  RoleDistribution,
+  RoleDistributionSkeleton,
+} from "@/components/role-distribution";
 import { TagBar, TagFilter } from "@/components/tag-bar";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { useTagStore } from "@/hooks/use-tag-store";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Brain } from "lucide-react";
+
+interface DashboardData {
+  totalChunks: number;
+  crossCuttingInsights: string[];
+  behaviors: BehaviorData[];
+  projects: ProjectData[];
+  roleDistribution: Record<string, number>;
+}
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -25,8 +51,8 @@ export default function Home() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
 
-  const [topics, setTopics] = useState<TopicData[]>([]);
-  const [topicsLoading, setTopicsLoading] = useState(true);
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
 
   const tagStore = useTagStore();
 
@@ -38,13 +64,13 @@ export default function Home() {
   syncFromHitsRef.current = tagStore.syncFromHits;
 
   useEffect(() => {
-    fetch("/api/explore")
+    fetch("/api/dashboard")
       .then((res) => res.json())
       .then((data) => {
-        if (data.topics) setTopics(data.topics);
+        if (!data.error) setDashboard(data);
       })
-      .catch((err) => console.error("Explore failed:", err))
-      .finally(() => setTopicsLoading(false));
+      .catch((err) => console.error("Dashboard failed:", err))
+      .finally(() => setDashboardLoading(false));
 
     tagStore.loadFromServer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,11 +124,11 @@ export default function Home() {
     [doSearch]
   );
 
-  const handleTopicClick = useCallback(
-    (topic: TopicData) => {
+  const handleBehaviorClick = useCallback(
+    (behavior: BehaviorData) => {
       setSimilarTo(null);
-      setQuery(topic.query);
-      const searchText = topic.hits[0]?.chunkText ?? topic.query;
+      setQuery(behavior.query);
+      const searchText = behavior.topHits[0]?.chunkText ?? behavior.query;
       doSearch(searchText);
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
@@ -187,12 +213,11 @@ export default function Home() {
   const showResults = searched || activeTagFilter;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-4 py-10">
+    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10">
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold tracking-tight">Trace Explorer</h1>
         <p className="text-muted-foreground text-sm">
-          Search 141K chunks of AI coding agent traces from SWE-bench.
-          Find how agents debug, fix, and test real open-source issues.
+          AI coding agent behavior insights from 141K SWE-bench trace chunks
         </p>
       </header>
 
@@ -231,7 +256,7 @@ export default function Home() {
           className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
         >
           <ArrowLeft className="size-3.5" />
-          Explore Topics
+          Back to Dashboard
         </button>
       )}
 
@@ -288,23 +313,69 @@ export default function Home() {
       />
 
       {!showResults && (
-        <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Explore Topics
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {topicsLoading
-              ? Array.from({ length: 6 }).map((_, i) => (
-                  <TopicCardSkeleton key={i} />
-                ))
-              : topics.map((topic) => (
-                  <TopicCard
-                    key={topic.id}
-                    topic={topic}
-                    onClick={handleTopicClick}
-                  />
-                ))}
+        <div className="flex flex-col gap-8">
+          {/* Cross-cutting insights */}
+          {dashboardLoading ? (
+            <CrossCuttingInsightsSkeleton />
+          ) : dashboard?.crossCuttingInsights ? (
+            <CrossCuttingInsights insights={dashboard.crossCuttingInsights} />
+          ) : null}
+
+          {/* Stats strip */}
+          {dashboardLoading ? (
+            <DashboardStatsSkeleton />
+          ) : dashboard ? (
+            <DashboardStats
+              totalChunks={dashboard.totalChunks}
+              projectCount={dashboard.projects.length}
+              behaviorCount={dashboard.behaviors.length}
+            />
+          ) : null}
+
+          <Separator />
+
+          {/* Behavior pattern cards */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
+                <Brain className="size-4 text-sky-400" />
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight">
+                Agent Behavior Patterns
+              </h2>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {dashboardLoading
+                ? Array.from({ length: 6 }).map((_, i) => (
+                    <BehaviorCardSkeleton key={i} />
+                  ))
+                : dashboard?.behaviors.map((behavior) => (
+                    <BehaviorCard
+                      key={behavior.id}
+                      behavior={behavior}
+                      onClick={handleBehaviorClick}
+                    />
+                  ))}
+            </div>
           </div>
+
+          <Separator />
+
+          {/* Project breakdown */}
+          {dashboardLoading ? (
+            <ProjectBreakdownSkeleton />
+          ) : dashboard?.projects ? (
+            <ProjectBreakdown projects={dashboard.projects} />
+          ) : null}
+
+          <Separator />
+
+          {/* Role distribution */}
+          {dashboardLoading ? (
+            <RoleDistributionSkeleton />
+          ) : dashboard?.roleDistribution ? (
+            <RoleDistribution distribution={dashboard.roleDistribution} />
+          ) : null}
         </div>
       )}
     </div>
