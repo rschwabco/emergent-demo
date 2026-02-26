@@ -12,17 +12,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FolderOpen } from "lucide-react";
 
 const PROJECT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+  // Web frameworks (green family)
   django:         { bg: "bg-emerald-500/10", text: "text-emerald-400", dot: "bg-emerald-500" },
+  pallets:        { bg: "bg-teal-500/10",    text: "text-teal-400",    dot: "bg-teal-500" },
+  // Data science & visualization (blue family)
   "scikit-learn": { bg: "bg-sky-500/10",     text: "text-sky-400",     dot: "bg-sky-500" },
-  matplotlib:     { bg: "bg-amber-500/10",   text: "text-amber-400",   dot: "bg-amber-500" },
-  "pytest-dev":   { bg: "bg-rose-500/10",    text: "text-rose-400",    dot: "bg-rose-500" },
+  matplotlib:     { bg: "bg-blue-500/10",    text: "text-blue-400",    dot: "bg-blue-500" },
+  pydata:         { bg: "bg-indigo-500/10",  text: "text-indigo-400",  dot: "bg-indigo-500" },
+  mwaskom:        { bg: "bg-cyan-500/10",    text: "text-cyan-400",    dot: "bg-cyan-500" },
+  // Scientific computing (purple family)
   sympy:          { bg: "bg-violet-500/10",  text: "text-violet-400",  dot: "bg-violet-500" },
-  astropy:        { bg: "bg-indigo-500/10",  text: "text-indigo-400",  dot: "bg-indigo-500" },
-  "sphinx-doc":   { bg: "bg-teal-500/10",    text: "text-teal-400",    dot: "bg-teal-500" },
-  pallets:        { bg: "bg-orange-500/10",  text: "text-orange-400",  dot: "bg-orange-500" },
-  pydata:         { bg: "bg-pink-500/10",    text: "text-pink-400",    dot: "bg-pink-500" },
-  psf:            { bg: "bg-cyan-500/10",    text: "text-cyan-400",    dot: "bg-cyan-500" },
-  mwaskom:        { bg: "bg-lime-500/10",    text: "text-lime-400",    dot: "bg-lime-500" },
+  astropy:        { bg: "bg-purple-500/10",  text: "text-purple-400",  dot: "bg-purple-500" },
+  // Developer tooling (warm family)
+  "pytest-dev":   { bg: "bg-amber-500/10",   text: "text-amber-400",   dot: "bg-amber-500" },
+  "sphinx-doc":   { bg: "bg-orange-500/10",  text: "text-orange-400",  dot: "bg-orange-500" },
+  // Community (neutral)
+  psf:            { bg: "bg-slate-500/10",   text: "text-slate-400",   dot: "bg-slate-500" },
 };
 
 const DEFAULT_COLOR = { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground" };

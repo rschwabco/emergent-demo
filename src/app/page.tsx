@@ -26,6 +26,8 @@ import {
   RoleDistribution,
   RoleDistributionSkeleton,
 } from "@/components/role-distribution";
+import { ResultsSummary } from "@/components/results-summary";
+import { SummaryJobTracker } from "@/components/summary-job-tracker";
 import { TagBar, TagFilter } from "@/components/tag-bar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -47,6 +49,7 @@ export default function Home() {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [searchedQuery, setSearchedQuery] = useState("");
   const [similarTo, setSimilarTo] = useState<SearchHit | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
@@ -100,10 +103,12 @@ export default function Home() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setHits(data.hits);
+      setSearchedQuery(searchQuery.trim());
       syncFromHitsRef.current(data.hits);
     } catch (err) {
       console.error("Search failed:", err);
       setHits([]);
+      setSearchedQuery("");
     } finally {
       setLoading(false);
     }
@@ -190,10 +195,12 @@ export default function Home() {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         setTagFilterHits(data.hits);
+        setSearchedQuery(`tag:${tag}`);
         syncFromHitsRef.current(data.hits);
       } catch (err) {
         console.error("Tag filter failed:", err);
         setTagFilterHits([]);
+        setSearchedQuery("");
       } finally {
         setTagFilterLoading(false);
       }
@@ -250,6 +257,7 @@ export default function Home() {
             setQuery("");
             setHits([]);
             setSearched(false);
+            setSearchedQuery("");
             setActiveTagFilter(null);
             setTagFilterHits(null);
           }}
@@ -293,6 +301,10 @@ export default function Home() {
             ? `No records tagged "${activeTagFilter}".`
             : "No results found. Try a different query or adjust filters."}
         </div>
+      )}
+
+      {showResults && !isLoading && displayHits.length > 0 && (
+        <ResultsSummary query={searchedQuery} hits={displayHits} />
       )}
 
       <SearchResults
@@ -378,6 +390,8 @@ export default function Home() {
           ) : null}
         </div>
       )}
+
+      <SummaryJobTracker />
     </div>
   );
 }

@@ -5,24 +5,24 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Users } from "lucide-react";
 
 const ROLE_COLORS: Record<string, string> = {
+  user: "bg-blue-500",
   assistant: "bg-violet-500",
-  tool: "bg-sky-500",
-  user: "bg-emerald-500",
-  system: "bg-amber-500",
+  tool: "bg-amber-500",
+  system: "bg-slate-500",
 };
 
 const ROLE_TEXT_COLORS: Record<string, string> = {
+  user: "text-blue-400",
   assistant: "text-violet-400",
-  tool: "text-sky-400",
-  user: "text-emerald-400",
-  system: "text-amber-400",
+  tool: "text-amber-400",
+  system: "text-slate-400",
 };
 
 const ROLE_BG_COLORS: Record<string, string> = {
+  user: "bg-blue-500/10",
   assistant: "bg-violet-500/10",
-  tool: "bg-sky-500/10",
-  user: "bg-emerald-500/10",
-  system: "bg-amber-500/10",
+  tool: "bg-amber-500/10",
+  system: "bg-slate-500/10",
 };
 
 interface RoleDistributionProps {
@@ -44,8 +44,8 @@ export function RoleDistribution({ distribution }: RoleDistributionProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <div className="bg-violet-500/10 flex size-7 items-center justify-center rounded-lg">
-          <Users className="size-4 text-violet-400" />
+        <div className="bg-blue-500/10 flex size-7 items-center justify-center rounded-lg">
+          <Users className="size-4 text-blue-400" />
         </div>
         <h2 className="text-lg font-semibold tracking-tight">
           Role Distribution

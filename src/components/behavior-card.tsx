@@ -26,16 +26,20 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 const BEHAVIOR_THEME: Record<string, { icon: LucideIcon; color: string; bg: string; border: string }> = {
-  "debugging":     { icon: Bug,          color: "text-red-400",     bg: "bg-red-500/10",     border: "border-l-red-500/50" },
-  "test-failures": { icon: FlaskConical, color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-l-amber-500/50" },
-  "code-reading":  { icon: BookOpen,     color: "text-sky-400",     bg: "bg-sky-500/10",     border: "border-l-sky-500/50" },
-  "refactoring":   { icon: Wrench,       color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-l-violet-500/50" },
-  "error-handling":{ icon: ShieldAlert,  color: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-l-orange-500/50" },
-  "config-deps":   { icon: Package,      color: "text-teal-400",    bg: "bg-teal-500/10",    border: "border-l-teal-500/50" },
-  "performance":   { icon: Gauge,        color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-l-emerald-500/50" },
-  "verification":  { icon: CheckCircle2, color: "text-green-400",   bg: "bg-green-500/10",   border: "border-l-green-500/50" },
-  "reproducing":   { icon: RotateCcw,    color: "text-pink-400",    bg: "bg-pink-500/10",    border: "border-l-pink-500/50" },
-  "api-design":    { icon: Code2,        color: "text-indigo-400",  bg: "bg-indigo-500/10",  border: "border-l-indigo-500/50" },
+  // Problem investigation (warm reds/oranges)
+  "debugging":      { icon: Bug,          color: "text-red-400",    bg: "bg-red-500/10",    border: "border-l-red-500/50" },
+  "error-handling": { icon: ShieldAlert,  color: "text-rose-400",   bg: "bg-rose-500/10",   border: "border-l-rose-500/50" },
+  "test-failures":  { icon: FlaskConical, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-l-orange-500/50" },
+  "reproducing":    { icon: RotateCcw,    color: "text-amber-400",  bg: "bg-amber-500/10",  border: "border-l-amber-500/50" },
+  // Code comprehension & design (cool blues)
+  "code-reading":   { icon: BookOpen,     color: "text-sky-400",    bg: "bg-sky-500/10",    border: "border-l-sky-500/50" },
+  "refactoring":    { icon: Wrench,       color: "text-blue-400",   bg: "bg-blue-500/10",   border: "border-l-blue-500/50" },
+  "api-design":     { icon: Code2,        color: "text-indigo-400", bg: "bg-indigo-500/10", border: "border-l-indigo-500/50" },
+  // Quality & performance (greens)
+  "verification":   { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-l-emerald-500/50" },
+  "performance":    { icon: Gauge,        color: "text-teal-400",    bg: "bg-teal-500/10",    border: "border-l-teal-500/50" },
+  // Infrastructure
+  "config-deps":    { icon: Package,      color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-l-violet-500/50" },
 };
 
 const DEFAULT_THEME = { icon: Code2, color: "text-muted-foreground", bg: "bg-muted", border: "border-l-muted" };
