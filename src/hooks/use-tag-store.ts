@@ -1,103 +1,125 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-
-const STORAGE_KEY = "trace-explorer-tags";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 export interface TagStore {
-  /** All known tag names, sorted alphabetically */
   tags: string[];
-  /** Map from hit ID to the set of tags assigned to it */
   assignments: Record<string, string[]>;
-  addTag: (name: string) => void;
-  removeTag: (name: string) => void;
   assignTag: (hitIds: string[], tag: string) => void;
   unassignTag: (hitId: string, tag: string) => void;
+  removeTag: (name: string) => void;
   getTagsForHit: (hitId: string) => string[];
   getHitIdsForTag: (tag: string) => Set<string>;
+  syncFromHits: (hits: Array<{ id: string; tags: string[] }>) => void;
+  loadFromServer: () => Promise<void>;
 }
 
-interface StoredState {
-  tags: string[];
-  assignments: Record<string, string[]>;
-}
+const LS_TAGS_KEY = "trace-explorer:tags";
+const LS_ASSIGNMENTS_KEY = "trace-explorer:tag-assignments";
 
-function loadState(): StoredState {
-  if (typeof window === "undefined") return { tags: [], assignments: {} };
+function readLocalTags(): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { tags: [], assignments: {} };
-    const parsed = JSON.parse(raw) as StoredState;
-    return {
-      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
-      assignments:
-        parsed.assignments && typeof parsed.assignments === "object"
-          ? parsed.assignments
-          : {},
-    };
+    const raw = localStorage.getItem(LS_TAGS_KEY);
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return { tags: [], assignments: {} };
+    return [];
   }
 }
 
-function saveState(state: StoredState) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function readLocalAssignments(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(LS_ASSIGNMENTS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalTags(tags: string[]) {
+  try {
+    localStorage.setItem(LS_TAGS_KEY, JSON.stringify(tags));
+  } catch { /* quota exceeded, ignore */ }
+}
+
+function writeLocalAssignments(assignments: Record<string, string[]>) {
+  try {
+    localStorage.setItem(LS_ASSIGNMENTS_KEY, JSON.stringify(assignments));
+  } catch { /* quota exceeded, ignore */ }
+}
+
+function persistToPinecone(updates: Array<{ id: string; tags: string[] }>) {
+  fetch("/api/tags", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates }),
+  }).catch((err) => console.error("Failed to persist tags to Pinecone:", err));
 }
 
 export function useTagStore(): TagStore {
   const [tags, setTags] = useState<string[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string[]>>({});
-  const initialized = useRef(false);
+  const assignmentsRef = useRef(assignments);
+  assignmentsRef.current = assignments;
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (!initialized.current) {
-      const state = loadState();
-      setTags(state.tags);
-      setAssignments(state.assignments);
-      initialized.current = true;
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    const savedTags = readLocalTags();
+    const savedAssignments = readLocalAssignments();
+    if (savedTags.length > 0) setTags(savedTags);
+    if (Object.keys(savedAssignments).length > 0) {
+      setAssignments(savedAssignments);
+      assignmentsRef.current = savedAssignments;
     }
   }, []);
 
-  const persist = useCallback(
-    (nextTags: string[], nextAssignments: Record<string, string[]>) => {
-      saveState({ tags: nextTags, assignments: nextAssignments });
-    },
-    []
-  );
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    writeLocalTags(tags);
+  }, [tags]);
 
-  const addTag = useCallback(
-    (name: string) => {
-      const normalized = name.trim().toLowerCase();
-      if (!normalized) return;
-      setTags((prev) => {
-        if (prev.includes(normalized)) return prev;
-        const next = [...prev, normalized].sort();
-        persist(next, assignments);
-        return next;
-      });
-    },
-    [assignments, persist]
-  );
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    writeLocalAssignments(assignments);
+  }, [assignments]);
 
-  const removeTag = useCallback(
-    (name: string) => {
-      setTags((prev) => {
-        const next = prev.filter((t) => t !== name);
-        const nextAssignments = { ...assignments };
-        for (const hitId of Object.keys(nextAssignments)) {
-          nextAssignments[hitId] = nextAssignments[hitId].filter(
-            (t) => t !== name
-          );
-          if (nextAssignments[hitId].length === 0)
-            delete nextAssignments[hitId];
+  const loadFromServer = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tags");
+      if (!res.ok) return;
+      const data = await res.json();
+      const serverTags: string[] = data.tags ?? [];
+      if (serverTags.length > 0) {
+        setTags((prev) => {
+          const merged = new Set([...prev, ...serverTags]);
+          return [...merged].sort();
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load tags from server:", err);
+    }
+  }, []);
+
+  const syncFromHits = useCallback(
+    (hits: Array<{ id: string; tags: string[] }>) => {
+      const nextAssignments: Record<string, string[]> = {
+        ...assignmentsRef.current,
+      };
+      const allTags = new Set<string>(tags);
+
+      for (const hit of hits) {
+        const hitTags = hit.tags ?? [];
+        if (hitTags.length > 0) {
+          nextAssignments[hit.id] = hitTags;
+          for (const t of hitTags) allTags.add(t);
         }
-        setAssignments(nextAssignments);
-        persist(next, nextAssignments);
-        return next;
-      });
+      }
+
+      setAssignments(nextAssignments);
+      setTags([...allTags].sort());
     },
-    [assignments, persist]
+    [tags]
   );
 
   const assignTag = useCallback(
@@ -105,43 +127,66 @@ export function useTagStore(): TagStore {
       const normalized = tag.trim().toLowerCase();
       if (!normalized) return;
 
-      setTags((prevTags) => {
-        const nextTags = prevTags.includes(normalized)
-          ? prevTags
-          : [...prevTags, normalized].sort();
-
-        setAssignments((prevAssign) => {
-          const nextAssign = { ...prevAssign };
-          for (const id of hitIds) {
-            const existing = nextAssign[id] || [];
-            if (!existing.includes(normalized)) {
-              nextAssign[id] = [...existing, normalized];
-            }
-          }
-          persist(nextTags, nextAssign);
-          return nextAssign;
-        });
-
-        return nextTags;
+      setTags((prev) => {
+        if (prev.includes(normalized)) return prev;
+        return [...prev, normalized].sort();
       });
-    },
-    [persist]
-  );
 
-  const unassignTag = useCallback(
-    (hitId: string, tag: string) => {
       setAssignments((prev) => {
         const next = { ...prev };
-        if (next[hitId]) {
-          next[hitId] = next[hitId].filter((t) => t !== tag);
-          if (next[hitId].length === 0) delete next[hitId];
+        const updates: Array<{ id: string; tags: string[] }> = [];
+
+        for (const id of hitIds) {
+          const existing = next[id] || [];
+          if (!existing.includes(normalized)) {
+            next[id] = [...existing, normalized];
+          } else {
+            next[id] = existing;
+          }
+          updates.push({ id, tags: next[id] });
         }
-        persist(tags, next);
+
+        persistToPinecone(updates);
         return next;
       });
     },
-    [tags, persist]
+    []
   );
+
+  const unassignTag = useCallback((hitId: string, tag: string) => {
+    setAssignments((prev) => {
+      const next = { ...prev };
+      if (next[hitId]) {
+        next[hitId] = next[hitId].filter((t) => t !== tag);
+        if (next[hitId].length === 0) delete next[hitId];
+      }
+      persistToPinecone([{ id: hitId, tags: next[hitId] || [] }]);
+      return next;
+    });
+  }, []);
+
+  const removeTag = useCallback((name: string) => {
+    setTags((prev) => prev.filter((t) => t !== name));
+    setAssignments((prev) => {
+      const next = { ...prev };
+      const updates: Array<{ id: string; tags: string[] }> = [];
+
+      for (const hitId of Object.keys(next)) {
+        if (next[hitId].includes(name)) {
+          next[hitId] = next[hitId].filter((t) => t !== name);
+          if (next[hitId].length === 0) {
+            delete next[hitId];
+            updates.push({ id: hitId, tags: [] });
+          } else {
+            updates.push({ id: hitId, tags: next[hitId] });
+          }
+        }
+      }
+
+      if (updates.length > 0) persistToPinecone(updates);
+      return next;
+    });
+  }, []);
 
   const getTagsForHit = useCallback(
     (hitId: string) => assignments[hitId] || [],
@@ -162,11 +207,12 @@ export function useTagStore(): TagStore {
   return {
     tags,
     assignments,
-    addTag,
-    removeTag,
     assignTag,
     unassignTag,
+    removeTag,
     getTagsForHit,
     getHitIdsForTag,
+    syncFromHits,
+    loadFromServer,
   };
 }

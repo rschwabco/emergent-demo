@@ -10,7 +10,6 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RoleBadge } from "@/components/role-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,8 +20,30 @@ import {
   ChevronUp,
   Loader2,
   X,
+  Tag,
+  Brain,
+  Type,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const TAG_COLORS = [
+  "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
+  "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800",
+  "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800",
+  "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
+  "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800",
+  "bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300 dark:border-cyan-800",
+  "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800",
+  "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800",
+];
+
+function getTagColor(tag: string) {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+}
 
 export interface SearchHit {
   id: string;
@@ -34,6 +55,10 @@ export interface SearchHit {
   chunkIndex: number;
   project: string;
   issue: string;
+  tags: string[];
+  sources?: string[];
+  semanticRank?: number | null;
+  keywordRank?: number | null;
 }
 
 interface ContextTurn {
@@ -42,13 +67,51 @@ interface ContextTurn {
   text: string;
 }
 
-function formatScore(score: number) {
-  return (score * 100).toFixed(1) + "%";
-}
-
 function truncate(text: string, maxLen = 280) {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen).trimEnd() + "...";
+}
+
+function SourceBadges({ hit }: { hit: SearchHit }) {
+  const sources = hit.sources ?? [];
+  if (sources.length === 0) return null;
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      {sources.includes("semantic") && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+          title={
+            hit.semanticRank != null
+              ? `Semantic rank #${hit.semanticRank}`
+              : "Found via semantic search"
+          }
+        >
+          <Brain className="size-2.5" />
+          semantic
+          {hit.semanticRank != null && (
+            <span className="tabular-nums">#{hit.semanticRank}</span>
+          )}
+        </span>
+      )}
+      {sources.includes("keyword") && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300"
+          title={
+            hit.keywordRank != null
+              ? `Keyword rank #${hit.keywordRank}`
+              : "Found via keyword search"
+          }
+        >
+          <Type className="size-2.5" />
+          keyword
+          {hit.keywordRank != null && (
+            <span className="tabular-nums">#{hit.keywordRank}</span>
+          )}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function ContextThread({
@@ -95,6 +158,7 @@ function ContextThread({
 
 function ResultCard({
   hit,
+  rank,
   onFindSimilar,
   selected,
   onSelect,
@@ -103,6 +167,7 @@ function ResultCard({
   onRemoveTag,
 }: {
   hit: SearchHit;
+  rank: number;
   onFindSimilar?: (hit: SearchHit) => void;
   selected: boolean;
   onSelect: (id: string, checked: boolean) => void;
@@ -182,37 +247,43 @@ function ResultCard({
           <CardTitle className="text-sm">
             {hit.project}/{hit.issue}
           </CardTitle>
-          <span className="text-muted-foreground ml-auto text-xs tabular-nums">
-            {formatScore(hit.score)} match
+          <span className="ml-auto flex items-center gap-1.5">
+            <SourceBadges hit={hit} />
+            <span className="text-muted-foreground text-[11px] tabular-nums">
+              #{rank}
+            </span>
           </span>
         </div>
         <CardDescription className="text-xs ml-8">
           Turn {hit.turnIndex} &middot; Chunk {hit.chunkIndex}
-          {hitTags.length > 0 && (
-            <span className="inline-flex items-center gap-1 ml-2">
-              {hitTags.map((tag) => (
-                <Badge
-                  key={tag}
-                  variant="secondary"
-                  className="text-[10px] px-1.5 py-0 gap-0.5"
-                >
-                  {tag}
-                  {onRemoveTag && (
-                    <button
-                      className="ml-0.5 rounded-full hover:bg-destructive/20 p-0.5"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveTag(hit.id, tag);
-                      }}
-                    >
-                      <X className="size-2" />
-                    </button>
-                  )}
-                </Badge>
-              ))}
-            </span>
-          )}
         </CardDescription>
+        {hitTags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 ml-8 mt-1">
+            {hitTags.map((tag) => (
+              <span
+                key={tag}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium",
+                  getTagColor(tag)
+                )}
+              >
+                <Tag className="size-3" />
+                {tag}
+                {onRemoveTag && (
+                  <button
+                    className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveTag(hit.id, tag);
+                    }}
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="ml-8">
         {!expanded && (
@@ -327,10 +398,11 @@ export function SearchResults({
 
   return (
     <div className="space-y-3">
-      {hits.map((hit) => (
+      {hits.map((hit, i) => (
         <ResultCard
           key={hit.id}
           hit={hit}
+          rank={i + 1}
           onFindSimilar={onFindSimilar}
           selected={selectedIds.has(hit.id)}
           onSelect={onSelect}

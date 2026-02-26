@@ -55,6 +55,11 @@ export async function POST(request: NextRequest) {
       const fields = hit.fields as Record<string, unknown>;
       const traceId = fields.trace_id as string;
       const parts = traceId.replace(".json", "").split("__");
+      const rawTags = fields.tags;
+      const tags: string[] = Array.isArray(rawTags)
+        ? rawTags.filter((t): t is string => typeof t === "string")
+        : [];
+
       return {
         id: hit._id,
         score: hit._score,
@@ -65,6 +70,7 @@ export async function POST(request: NextRequest) {
         chunkIndex: fields.chunk_index,
         project: parts[0],
         issue: parts[1],
+        tags,
       };
     });
 

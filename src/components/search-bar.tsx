@@ -30,7 +30,7 @@ export function SearchBar({
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search agent traces... e.g. 'debugging a Django migration'"
+          placeholder="Search agent traces... e.g. 'debugging a Django migration' or 'IntegrityError'"
           className="pl-9"
         />
       </div>

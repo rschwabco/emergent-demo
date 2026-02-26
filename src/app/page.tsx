@@ -34,6 +34,8 @@ export default function Home() {
   roleRef.current = role;
   const projectRef = useRef(project);
   projectRef.current = project;
+  const syncFromHitsRef = useRef(tagStore.syncFromHits);
+  syncFromHitsRef.current = tagStore.syncFromHits;
 
   useEffect(() => {
     fetch("/api/explore")
@@ -51,17 +53,17 @@ export default function Home() {
     setSearched(true);
     setSelectedIds(new Set());
     try {
-      const body: Record<string, unknown> = {
-        query: searchQuery.trim(),
-        topK: 15,
-        rerank: true,
-      };
       const filters: Record<string, string> = {};
       if (roleRef.current !== "all") filters.role = roleRef.current;
       if (projectRef.current !== "all") filters.project = projectRef.current;
+
+      const body: Record<string, unknown> = {
+        query: searchQuery.trim(),
+        topK: 15,
+      };
       if (Object.keys(filters).length > 0) body.filters = filters;
 
-      const res = await fetch("/api/search", {
+      const res = await fetch("/api/hybrid-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -69,6 +71,7 @@ export default function Home() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setHits(data.hits);
+      syncFromHitsRef.current(data.hits);
     } catch (err) {
       console.error("Search failed:", err);
       setHits([]);
@@ -96,7 +99,8 @@ export default function Home() {
     (topic: TopicData) => {
       setSimilarTo(null);
       setQuery(topic.query);
-      doSearch(topic.query);
+      const searchText = topic.hits[0]?.chunkText ?? topic.query;
+      doSearch(searchText);
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
     [doSearch]
@@ -134,20 +138,51 @@ export default function Home() {
     return counts;
   }, [tagStore]);
 
-  const filteredHits = useMemo(() => {
-    if (!activeTagFilter) return hits;
-    const taggedIds = tagStore.getHitIdsForTag(activeTagFilter);
-    return hits.filter((h) => taggedIds.has(h.id));
-  }, [hits, activeTagFilter, tagStore]);
+  const [tagFilterHits, setTagFilterHits] = useState<SearchHit[] | null>(null);
+  const [tagFilterLoading, setTagFilterLoading] = useState(false);
+
+  const handleTagFilter = useCallback(
+    async (tag: string | null) => {
+      setActiveTagFilter(tag);
+      setSelectedIds(new Set());
+
+      if (!tag) {
+        setTagFilterHits(null);
+        return;
+      }
+
+      setTagFilterLoading(true);
+      try {
+        const res = await fetch("/api/tags/filter", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tag }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        setTagFilterHits(data.hits);
+        syncFromHitsRef.current(data.hits);
+      } catch (err) {
+        console.error("Tag filter failed:", err);
+        setTagFilterHits([]);
+      } finally {
+        setTagFilterLoading(false);
+      }
+    },
+    []
+  );
+
+  const displayHits = activeTagFilter && tagFilterHits !== null ? tagFilterHits : hits;
+  const isLoading = activeTagFilter ? tagFilterLoading : loading;
+  const showResults = searched || activeTagFilter;
 
   return (
     <div className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-4 py-10">
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold tracking-tight">Trace Explorer</h1>
         <p className="text-muted-foreground text-sm">
-          Semantically search 141K chunks of AI coding agent traces from
-          SWE-bench. Find how agents debug, fix, and test real open-source
-          issues.
+          Search 141K chunks of AI coding agent traces from SWE-bench.
+          Find how agents debug, fix, and test real open-source issues.
         </p>
       </header>
 
@@ -167,19 +202,21 @@ export default function Home() {
         <TagFilter
           tags={tagStore.tags}
           activeTag={activeTagFilter}
-          onTagFilter={setActiveTagFilter}
+          onTagFilter={handleTagFilter}
           tagCounts={tagCounts}
           onDeleteTag={tagStore.removeTag}
         />
       </div>
 
-      {searched && (
+      {showResults && (
         <button
           onClick={() => {
             setSimilarTo(null);
             setQuery("");
             setHits([]);
             setSearched(false);
+            setActiveTagFilter(null);
+            setTagFilterHits(null);
           }}
           className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
         >
@@ -215,17 +252,17 @@ export default function Home() {
         </div>
       )}
 
-      {searched && !loading && filteredHits.length === 0 && (
+      {showResults && !isLoading && displayHits.length === 0 && (
         <div className="text-muted-foreground py-12 text-center text-sm">
           {activeTagFilter
-            ? `No results with tag "${activeTagFilter}". Try clearing the tag filter.`
+            ? `No records tagged "${activeTagFilter}".`
             : "No results found. Try a different query or adjust filters."}
         </div>
       )}
 
       <SearchResults
-        hits={filteredHits}
-        loading={loading}
+        hits={displayHits}
+        loading={isLoading}
         onFindSimilar={handleFindSimilar}
         selectedIds={selectedIds}
         onSelect={handleSelect}
@@ -240,7 +277,7 @@ export default function Home() {
         onClearSelection={handleClearSelection}
       />
 
-      {!searched && (
+      {!showResults && (
         <div className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold tracking-tight">
             Explore Topics
