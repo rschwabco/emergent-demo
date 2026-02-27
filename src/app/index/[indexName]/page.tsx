@@ -473,6 +473,7 @@ export default function IndexDashboard() {
             hits={enrichedFacetHits}
             selection={facetSelection}
             onSelectionChange={setFacetSelection}
+            knownTags={tagStore.tags}
             {...(activeIndex !== "agent-traces-semantic" && {
               hiddenFacets: ["framework"],
             })}

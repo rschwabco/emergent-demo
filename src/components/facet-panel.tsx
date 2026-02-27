@@ -85,7 +85,8 @@ function sortBuckets(buckets: FacetBucket[]): FacetBucket[] {
 
 export function buildFacets(
   hits: SearchHit[],
-  hiddenFacets?: string[]
+  hiddenFacets?: string[],
+  knownTags?: string[]
 ): Facet[] {
   const hidden = new Set(hiddenFacets ?? []);
   const facets: Facet[] = [];
@@ -109,6 +110,14 @@ export function buildFacets(
         }
       } else if (typeof val === "string" && val) {
         counts.set(val, (counts.get(val) ?? 0) + 1);
+      }
+    }
+
+    // Include tags from the store (e.g. loaded from server) so they show in the UI
+    // even when no current hit has them (e.g. fresh session / different device).
+    if (def.key === "tags" && knownTags?.length) {
+      for (const tag of knownTags) {
+        if (!counts.has(tag)) counts.set(tag, 0);
       }
     }
 
@@ -183,6 +192,8 @@ interface FacetPanelProps {
   selection: FacetSelection;
   onSelectionChange: (selection: FacetSelection) => void;
   hiddenFacets?: string[];
+  /** Tags known to the store (e.g. from server). Shown in the Tags facet even if no current hit has them. */
+  knownTags?: string[];
 }
 
 function SearchableFacetRow({
@@ -268,10 +279,11 @@ export function FacetPanel({
   selection,
   onSelectionChange,
   hiddenFacets,
+  knownTags,
 }: FacetPanelProps) {
   const facets = useMemo(
-    () => buildFacets(hits, hiddenFacets),
-    [hits, hiddenFacets]
+    () => buildFacets(hits, hiddenFacets, knownTags),
+    [hits, hiddenFacets, knownTags]
   );
 
   const toggle = (facetKey: string, value: string) => {
