@@ -83,17 +83,17 @@ const CURATED_QUERIES: CuratedQuery[] = [
   },
   {
     query: "agent backtracks after realizing its initial fix was wrong",
-    category: "Behavioral Pattern",
+    category: "Vocabulary Mismatch",
     whyVectorWins:
-      "This describes a behavioral pattern (backtracking). There's no single keyword that captures it. The semantic model found turns where agents are mid-iteration — checking if a fix was executed, discovering results don't match expectations, reverting and trying again — using words like \"Let me check if our fix is actually being executed\" and \"the fix isn't working as expected.\"",
+      "The concept of \"backtracking\" is expressed with entirely different words in the traces — \"Let me check if our fix is actually being executed\", \"the fix isn't working as expected\", \"Let me revert.\" None of these share keywords with the query. The semantic model bridges the vocabulary gap to find agents mid-iteration, discovering their approach failed and pivoting.",
     withoutVector:
       "Scattered results where the words \"fix\" and \"wrong\" happen to co-occur, regardless of whether the agent is actually backtracking.",
   },
   {
     query: "agent realizes the bug is in a different file than expected",
-    category: "Behavioral Pattern",
+    category: "Polysemy",
     whyVectorWins:
-      "Keyword search treated \"different\" and \"expected\" as tokens and matched test assertion messages. Vector search found actual aha moments — a Sphinx agent discovering wrong variable scope linking, a sympy agent finding a second copy of a file in /testbed/ — the real discovery moments with almost no keyword overlap.",
+      "Keyword search matched \"different\" and \"expected\" in test assertion output — \"producing different labels than what the test expects\" — which is about value mismatches, not location discovery. Vector search found actual aha moments — a Sphinx agent discovering wrong variable scope, a sympy agent finding a second copy of a file in /testbed/ — same words, completely different meaning.",
     withoutVector:
       "Test output comparisons showing \"different from expected\" values — about assertion failures, not discovery moments.",
   },
@@ -152,8 +152,6 @@ const CATEGORY_STYLES: Record<string, string> = {
     "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800",
   "Concept vs. Token":
     "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200 dark:border-blue-800",
-  "Behavioral Pattern":
-    "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300 border-violet-200 dark:border-violet-800",
   Polysemy:
     "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-200 dark:border-rose-800",
   "Synonym Coverage":
