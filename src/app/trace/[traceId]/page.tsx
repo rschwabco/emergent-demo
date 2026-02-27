@@ -8,8 +8,8 @@ import { ArrowLeft } from "lucide-react";
 
 interface TraceData {
   traceId: string;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
   turnCount: number;
   turns: Turn[];
 }
@@ -56,7 +56,7 @@ export default function TracePage() {
       <div className="flex flex-col">
         <h1 className="text-xl font-bold tracking-tight">
           {data
-            ? `${data.project}/${data.issue}`
+            ? `${data.framework}/${data.trace}`
             : params.traceId?.replace(".json", "")}
         </h1>
         {data && (

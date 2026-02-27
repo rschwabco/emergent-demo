@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const { query, topK = 10, filters, rerank, indexName, namespace } = body as {
       query: string;
       topK?: number;
-      filters?: { role?: string; project?: string };
+      filters?: { role?: string; framework?: string };
       rerank?: boolean;
       indexName?: string;
       namespace?: string;
@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
     if (filters?.role) {
       filter.role = { $eq: filters.role };
     }
-    if (filters?.project) {
-      filter.trace_id = { $regex: `^${filters.project}__` };
+    if (filters?.framework) {
+      filter.trace_id = { $regex: `^${filters.framework}__` };
     }
 
     const searchOptions: Parameters<typeof ns.searchRecords>[0] = {
@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
         traceId,
         turnIndex: fields.turn_index,
         chunkIndex: fields.chunk_index,
-        project: (fields.project as string) || parts[0] || "",
-        issue: (fields.title as string) || parts[1] || "",
+        framework: (fields.project as string) || parts[0] || "",
+        trace: (fields.title as string) || parts[1] || "",
         tags,
       };
     });

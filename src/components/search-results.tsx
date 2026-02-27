@@ -23,6 +23,8 @@ import {
   Tag,
   Brain,
   Type,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -53,8 +55,8 @@ export interface SearchHit {
   traceId: string;
   turnIndex: number;
   chunkIndex: number;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
   tags: string[];
   sources?: string[];
   semanticRank?: number | null;
@@ -78,6 +80,12 @@ function formatScore(score: number | null | undefined): string | null {
   if (score == null) return null;
   if (score >= 1) return score.toFixed(1);
   return score.toFixed(3);
+}
+
+function formatMatchPercent(score: number, maxScore: number): string {
+  if (maxScore <= 0) return "—";
+  const pct = (score / maxScore) * 100;
+  return `${pct.toFixed(2)}%`;
 }
 
 function SourceBadges({ hit }: { hit: SearchHit }) {
@@ -172,6 +180,7 @@ function ContextThread({
 function ResultCard({
   hit,
   rank,
+  maxScore,
   onFindSimilar,
   selected,
   onSelect,
@@ -182,6 +191,7 @@ function ResultCard({
 }: {
   hit: SearchHit;
   rank: number;
+  maxScore: number;
   onFindSimilar?: (hit: SearchHit) => void;
   selected: boolean;
   onSelect: (id: string, checked: boolean) => void;
@@ -193,6 +203,7 @@ function ResultCard({
   const [expanded, setExpanded] = useState(false);
   const [contextTurns, setContextTurns] = useState<ContextTurn[] | null>(null);
   const [loadingContext, setLoadingContext] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleExpand = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -230,21 +241,19 @@ function ResultCard({
     }
   };
 
-  const handleCardClick = () => {
-    if (selectionActive) {
-      onSelect(hit.id, !selected);
-    } else {
-      onFindSimilar?.(hit);
-    }
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await navigator.clipboard.writeText(hit.chunkText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
     <Card
       className={cn(
-        "group cursor-pointer py-4 transition-all hover:bg-white/[0.03] dark:hover:bg-white/[0.04] hover:shadow-md",
+        "group py-4 transition-all hover:bg-white/[0.03] dark:hover:bg-white/[0.04] hover:shadow-md",
         selected && "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/20"
       )}
-      onClick={handleCardClick}
     >
       <CardHeader className="gap-1 pb-0">
         <div className="flex items-center gap-2">
@@ -261,12 +270,15 @@ function ResultCard({
           />
           <RoleBadge role={hit.role} />
           <CardTitle className="text-sm">
-            {hit.project}/{hit.issue}
+            {hit.framework}/{hit.trace}
           </CardTitle>
           <span className="ml-auto flex items-center gap-1.5">
             <SourceBadges hit={hit} />
-            <span className="text-muted-foreground text-[11px] tabular-nums">
-              #{rank}
+            <span
+              className="text-muted-foreground text-[11px] tabular-nums"
+              title={`Rank #${rank} · Raw score ${hit.score.toFixed(4)}`}
+            >
+              {formatMatchPercent(hit.score, maxScore)} match
             </span>
           </span>
         </div>
@@ -356,6 +368,19 @@ function ResultCard({
             variant="ghost"
             size="xs"
             className="text-muted-foreground gap-1"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <Check className="size-3" />
+            ) : (
+              <Copy className="size-3" />
+            )}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-muted-foreground gap-1"
             asChild
             onClick={(e) => e.stopPropagation()}
           >
@@ -414,6 +439,8 @@ export function SearchResults({
     return null;
   }
 
+  const maxScore = Math.max(...hits.map((h) => h.score), 0);
+
   return (
     <div className="space-y-3">
       {hits.map((hit, i) => (
@@ -421,6 +448,7 @@ export function SearchResults({
           key={hit.id}
           hit={hit}
           rank={i + 1}
+          maxScore={maxScore}
           onFindSimilar={onFindSimilar}
           selected={selectedIds.has(hit.id)}
           onSelect={onSelect}

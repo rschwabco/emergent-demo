@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SearchBar } from "@/components/search-bar";
-import { FilterPanel } from "@/components/filter-panel";
+import { FacetPanel, applyFacetFilters, type FacetSelection } from "@/components/facet-panel";
 import { SearchResults, type SearchHit } from "@/components/search-results";
 import {
   BehaviorCard,
@@ -11,17 +11,13 @@ import {
   type BehaviorData,
 } from "@/components/behavior-card";
 import {
-  DashboardStats,
-  DashboardStatsSkeleton,
-} from "@/components/dashboard-stats";
-import {
   CrossCuttingInsights,
   CrossCuttingInsightsSkeleton,
 } from "@/components/cross-cutting-insights";
 import {
-  ProjectBreakdown,
-  ProjectBreakdownSkeleton,
-  type ProjectData,
+  FrameworkBreakdown,
+  FrameworkBreakdownSkeleton,
+  type FrameworkData,
 } from "@/components/project-breakdown";
 import {
   RoleDistribution,
@@ -29,7 +25,7 @@ import {
 } from "@/components/role-distribution";
 import { ResultsSummary } from "@/components/results-summary";
 import { SummaryJobTracker } from "@/components/summary-job-tracker";
-import { TagBar, TagFilter } from "@/components/tag-bar";
+import { TagBar } from "@/components/tag-bar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useTagStore } from "@/hooks/use-tag-store";
@@ -48,15 +44,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Brain, Sparkles, Loader2, Upload, Database, Trash2 } from "lucide-react";
+import { ArrowLeft, BarChart3, Brain, Loader2, Upload, Database, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { WalkthroughProvider, WalkthroughTrigger } from "@/components/walkthrough";
 
 interface DashboardData {
   totalChunks: number;
   expanded: boolean;
   crossCuttingInsights: string[];
   behaviors: BehaviorData[];
-  projects: ProjectData[];
+  frameworks?: FrameworkData[];
   roleDistribution: Record<string, number>;
 }
 
@@ -68,21 +65,25 @@ interface PineconeIndex {
   host: string;
 }
 
+function formatNumber(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  return n.toLocaleString();
+}
+
 export default function IndexDashboard() {
   const params = useParams<{ indexName: string }>();
   const router = useRouter();
   const activeIndex = decodeURIComponent(params.indexName);
 
   const [query, setQuery] = useState("");
-  const [role, setRole] = useState("all");
-  const [project, setProject] = useState("all");
+  const [facetSelection, setFacetSelection] = useState<FacetSelection>({});
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [similarTo, setSimilarTo] = useState<SearchHit | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const [queryRewrites, setQueryRewrites] = useState<string[]>([]);
 
   const [indexes, setIndexes] = useState<PineconeIndex[]>([]);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -95,10 +96,6 @@ export default function IndexDashboard() {
 
   const tagStore = useTagStore();
 
-  const roleRef = useRef(role);
-  roleRef.current = role;
-  const projectRef = useRef(project);
-  projectRef.current = project;
   const activeIndexRef = useRef(activeIndex);
   activeIndexRef.current = activeIndex;
   const syncFromHitsRef = useRef(tagStore.syncFromHits);
@@ -155,6 +152,24 @@ export default function IndexDashboard() {
     }
   }, [activeIndex, indexes, router]);
 
+  const expandDashboard = useCallback((indexName: string) => {
+    setExpanding(true);
+    const params = new URLSearchParams({
+      bust: "1",
+      expand: "1",
+      indexName,
+    });
+    fetch(`/api/dashboard?${params}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (activeIndexRef.current === indexName && !data.error) {
+          setDashboard(data);
+        }
+      })
+      .catch((err) => console.error("Expansion failed:", err))
+      .finally(() => setExpanding(false));
+  }, []);
+
   const loadDashboard = useCallback((indexName: string, bust = false) => {
     setDashboardLoading(true);
     const params = new URLSearchParams({ indexName });
@@ -162,15 +177,19 @@ export default function IndexDashboard() {
     fetch(`/api/dashboard?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        if (!data.error) setDashboard(data);
-        else setDashboard(null);
+        if (!data.error) {
+          setDashboard(data);
+          if (!data.expanded) expandDashboard(indexName);
+        } else {
+          setDashboard(null);
+        }
       })
       .catch((err) => {
         console.error("Dashboard failed:", err);
         setDashboard(null);
       })
       .finally(() => setDashboardLoading(false));
-  }, []);
+  }, [expandDashboard]);
 
   useEffect(() => {
     loadDashboard(activeIndex);
@@ -188,19 +207,16 @@ export default function IndexDashboard() {
     setLoading(true);
     setSearched(true);
     setSelectedIds(new Set());
+    setFacetSelection({});
+    setQueryRewrites([]);
     try {
-      const filters: Record<string, string> = {};
-      if (roleRef.current !== "all") filters.role = roleRef.current;
-      if (projectRef.current !== "all") filters.project = projectRef.current;
-
       const body: Record<string, unknown> = {
         query: searchQuery.trim(),
         topK: 15,
         indexName: activeIndexRef.current,
       };
-      if (Object.keys(filters).length > 0) body.filters = filters;
 
-      const res = await fetch("/api/hybrid-search", {
+      const res = await fetch("/api/enhanced-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -209,11 +225,13 @@ export default function IndexDashboard() {
       if (data.error) throw new Error(data.error);
       setHits(data.hits);
       setSearchedQuery(searchQuery.trim());
+      setQueryRewrites(data.rewrites ?? []);
       syncFromHitsRef.current(data.hits);
     } catch (err) {
       console.error("Search failed:", err);
       setHits([]);
       setSearchedQuery("");
+      setQueryRewrites([]);
     } finally {
       setLoading(false);
     }
@@ -223,6 +241,15 @@ export default function IndexDashboard() {
     setSimilarTo(null);
     doSearch(query);
   }, [query, doSearch]);
+
+  const handleSuggestedQuery = useCallback(
+    (sq: string) => {
+      setSimilarTo(null);
+      setQuery(sq);
+      doSearch(sq);
+    },
+    [doSearch]
+  );
 
   const handleFindSimilar = useCallback(
     (hit: SearchHit) => {
@@ -251,12 +278,11 @@ export default function IndexDashboard() {
     []
   );
 
-  const handleProjectClick = useCallback(
-    (projectName: string) => {
+  const handleFrameworkClick = useCallback(
+    (frameworkName: string) => {
       const broadQuery = "debugging testing code changes error handling";
       setSimilarTo(null);
-      setProject(projectName);
-      projectRef.current = projectName;
+      setFacetSelection({ framework: new Set([frameworkName]) });
       setQuery(broadQuery);
       doSearch(broadQuery);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -264,23 +290,6 @@ export default function IndexDashboard() {
     [doSearch]
   );
 
-  const handleExpandPatterns = useCallback(async () => {
-    setExpanding(true);
-    try {
-      const params = new URLSearchParams({
-        bust: "1",
-        expand: "1",
-        indexName: activeIndexRef.current,
-      });
-      const res = await fetch(`/api/dashboard?${params}`);
-      const data = await res.json();
-      if (!data.error) setDashboard(data);
-    } catch (err) {
-      console.error("Expansion failed:", err);
-    } finally {
-      setExpanding(false);
-    }
-  }, []);
 
   const handleSelect = useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -306,62 +315,49 @@ export default function IndexDashboard() {
     setSelectedIds(new Set());
   }, []);
 
-  const tagCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const tag of tagStore.tags) {
-      counts[tag] = tagStore.getHitIdsForTag(tag).size;
+  const behaviorHits = useMemo(() => {
+    if (!dashboard?.behaviors) return [];
+    const seen = new Set<string>();
+    const all: SearchHit[] = [];
+    for (const behavior of dashboard.behaviors) {
+      for (const hit of behavior.hits) {
+        if (!seen.has(hit.id)) {
+          seen.add(hit.id);
+          all.push({ ...hit, tags: [] });
+        }
+      }
     }
-    return counts;
-  }, [tagStore.tags, tagStore.getHitIdsForTag]);
+    return all;
+  }, [dashboard?.behaviors]);
 
-  const [tagFilterHits, setTagFilterHits] = useState<SearchHit[] | null>(null);
-  const [tagFilterLoading, setTagFilterLoading] = useState(false);
+  const facetHits = searched ? hits : behaviorHits;
 
-  const handleTagFilter = useCallback(
-    async (tag: string | null) => {
-      setActiveTagFilter(tag);
-      setSelectedIds(new Set());
-
-      if (!tag) {
-        setTagFilterHits(null);
-        return;
-      }
-
-      setTagFilterLoading(true);
-      try {
-        const res = await fetch("/api/tags/filter", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tag, indexName: activeIndexRef.current }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setTagFilterHits(data.hits);
-        setSearchedQuery(`tag:${tag}`);
-        syncFromHitsRef.current(data.hits);
-      } catch (err) {
-        console.error("Tag filter failed:", err);
-        setTagFilterHits([]);
-        setSearchedQuery("");
-      } finally {
-        setTagFilterLoading(false);
-      }
-    },
-    []
-  );
-
-  const displayHits = useMemo(() => {
-    const source = activeTagFilter && tagFilterHits !== null ? tagFilterHits : hits;
-    return source.filter((h) => {
-      if (role !== "all" && h.role !== role) return false;
-      if (project !== "all" && h.project !== project) return false;
-      return true;
+  const enrichedFacetHits = useMemo(() => {
+    return facetHits.map((hit) => {
+      const storeTags = tagStore.getTagsForHit(hit.id);
+      if (storeTags.length === 0 && hit.tags.length === 0) return hit;
+      const merged = [...new Set([...hit.tags, ...storeTags])];
+      return { ...hit, tags: merged };
     });
-  }, [hits, tagFilterHits, activeTagFilter, role, project]);
-  const isLoading = activeTagFilter ? tagFilterLoading : loading;
-  const showResults = searched || activeTagFilter;
+  }, [facetHits, tagStore.getTagsForHit]);
+
+  const enrichedHits = useMemo(() => {
+    return hits.map((hit) => {
+      const storeTags = tagStore.getTagsForHit(hit.id);
+      if (storeTags.length === 0 && hit.tags.length === 0) return hit;
+      const merged = [...new Set([...hit.tags, ...storeTags])];
+      return { ...hit, tags: merged };
+    });
+  }, [hits, tagStore.getTagsForHit]);
+
+  const displayHits = useMemo(
+    () => applyFacetFilters(enrichedHits, facetSelection),
+    [enrichedHits, facetSelection]
+  );
+  const showResults = searched;
 
   return (
+    <WalkthroughProvider>
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
@@ -371,19 +367,26 @@ export default function IndexDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={activeIndex} onValueChange={handleIndexChange}>
-            <SelectTrigger className="w-[220px]">
-              <Database className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <SelectValue placeholder="Select index" />
-            </SelectTrigger>
-            <SelectContent>
-              {indexes.map((idx) => (
-                <SelectItem key={idx.name} value={idx.name}>
-                  {idx.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div data-tour="index-selector" className="flex items-center gap-2">
+            <Select value={activeIndex} onValueChange={handleIndexChange}>
+              <SelectTrigger className="w-[220px]">
+                <Database className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <SelectValue placeholder="Select index" />
+              </SelectTrigger>
+              <SelectContent>
+                {indexes.map((idx) => (
+                  <SelectItem key={idx.name} value={idx.name}>
+                    {idx.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {dashboard && (
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                {formatNumber(dashboard.totalChunks)} chunks
+              </span>
+            )}
+          </div>
           {shiftHeld && (
             <Button
               variant="outline"
@@ -395,12 +398,21 @@ export default function IndexDashboard() {
               Delete Index
             </Button>
           )}
-          <Link href="/upload">
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <Upload className="h-3.5 w-3.5" />
-              Upload
-            </Button>
-          </Link>
+          <div data-tour="actions" className="flex items-center gap-2">
+            <Link href="/compare">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Compare
+              </Button>
+            </Link>
+            <Link href="/upload">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Upload className="h-3.5 w-3.5" />
+                Upload
+              </Button>
+            </Link>
+          </div>
+          <WalkthroughTrigger />
         </div>
       </header>
 
@@ -446,28 +458,27 @@ export default function IndexDashboard() {
       </Dialog>
 
       <div className="flex flex-col gap-3">
-        <SearchBar
-          query={query}
-          onQueryChange={setQuery}
-          onSearch={handleSearch}
-          loading={loading}
-        />
-        <FilterPanel
-          role={role}
-          onRoleChange={setRole}
-          {...(activeIndex === "agent-traces-semantic" && {
-            project,
-            onProjectChange: setProject,
-            showProjects: true,
-          })}
-        />
-        <TagFilter
-          tags={tagStore.tags}
-          activeTag={activeTagFilter}
-          onTagFilter={handleTagFilter}
-          tagCounts={tagCounts}
-          onDeleteTag={tagStore.removeTag}
-        />
+        <div data-tour="search-bar">
+          <SearchBar
+            query={query}
+            onQueryChange={setQuery}
+            onSearch={handleSearch}
+            onSuggestedQuery={handleSuggestedQuery}
+            loading={loading}
+            showSuggestions={!showResults}
+          />
+        </div>
+        <div data-tour="facet-panel">
+          <FacetPanel
+            hits={enrichedFacetHits}
+            selection={facetSelection}
+            onSelectionChange={setFacetSelection}
+            knownTags={tagStore.tags}
+            {...(activeIndex !== "agent-traces-semantic" && {
+              hiddenFacets: ["framework"],
+            })}
+          />
+        </div>
       </div>
 
       {showResults && (
@@ -478,14 +489,25 @@ export default function IndexDashboard() {
             setHits([]);
             setSearched(false);
             setSearchedQuery("");
-            setActiveTagFilter(null);
-            setTagFilterHits(null);
+            setQueryRewrites([]);
           }}
           className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
         >
           <ArrowLeft className="size-3.5" />
           Back to Dashboard
         </button>
+      )}
+
+      {queryRewrites.length > 0 && searched && !loading && (
+        <p className="text-muted-foreground text-xs">
+          Also searched for:{" "}
+          {queryRewrites.map((rw, i) => (
+            <span key={i}>
+              {i > 0 && " · "}
+              <span className="italic">&ldquo;{rw}&rdquo;</span>
+            </span>
+          ))}
+        </p>
       )}
 
       {similarTo && (
@@ -496,7 +518,7 @@ export default function IndexDashboard() {
               {similarTo.chunkText}
             </p>
             <p className="text-muted-foreground mt-1 text-[11px]">
-              from {similarTo.project}/{similarTo.issue} &middot; turn{" "}
+              from {similarTo.framework}/{similarTo.trace} &middot; turn{" "}
               {similarTo.turnIndex}
             </p>
           </div>
@@ -515,21 +537,19 @@ export default function IndexDashboard() {
         </div>
       )}
 
-      {showResults && !isLoading && displayHits.length === 0 && (
+      {showResults && !loading && displayHits.length === 0 && (
         <div className="text-muted-foreground py-12 text-center text-sm">
-          {activeTagFilter
-            ? `No records tagged "${activeTagFilter}".`
-            : "No results found. Try a different query or adjust filters."}
+          No results found. Try a different query or adjust filters.
         </div>
       )}
 
-      {showResults && !isLoading && displayHits.length > 0 && (
+      {showResults && !loading && displayHits.length > 0 && (
         <ResultsSummary query={searchedQuery} hits={displayHits} />
       )}
 
       <SearchResults
         hits={displayHits}
-        loading={isLoading}
+        loading={loading}
         onFindSimilar={handleFindSimilar}
         selectedIds={selectedIds}
         onSelect={handleSelect}
@@ -553,53 +573,19 @@ export default function IndexDashboard() {
             <CrossCuttingInsights insights={dashboard.crossCuttingInsights} />
           ) : null}
 
-          {dashboardLoading ? (
-            <DashboardStatsSkeleton />
-          ) : dashboard ? (
-            <DashboardStats
-              totalChunks={dashboard.totalChunks}
-              projectCount={dashboard.projects.length > 0 ? dashboard.projects.length : undefined}
-              behaviorCount={dashboard.behaviors.length}
-            />
-          ) : null}
-
-          <Separator />
-
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
-                  <Brain className="size-4 text-sky-400" />
-                </div>
-                <h2 className="text-lg font-semibold tracking-tight">
-                  Agent Behavior Patterns
-                </h2>
-                {dashboard?.expanded && (
-                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
-                    Expanded
-                  </span>
-                )}
+          <div data-tour="behavior-patterns" className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
+                <Brain className="size-4 text-sky-400" />
               </div>
-              {dashboard && !dashboard.expanded && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExpandPatterns}
-                  disabled={expanding}
-                  className="gap-1.5 text-xs"
-                >
-                  {expanding ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      Expanding...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="size-3.5" />
-                      Discover more
-                    </>
-                  )}
-                </Button>
+              <h2 className="text-lg font-semibold tracking-tight">
+                Agent Behavior Patterns
+              </h2>
+              {expanding && (
+                <span className="flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-400">
+                  <Loader2 className="size-3 animate-spin" />
+                  Discovering more…
+                </span>
               )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -622,9 +608,9 @@ export default function IndexDashboard() {
               <Separator />
 
               {dashboardLoading ? (
-                <ProjectBreakdownSkeleton />
-              ) : dashboard?.projects ? (
-                <ProjectBreakdown projects={dashboard.projects} onProjectClick={handleProjectClick} />
+                <FrameworkBreakdownSkeleton />
+              ) : dashboard?.frameworks ? (
+                <FrameworkBreakdown frameworks={dashboard.frameworks} onFrameworkClick={handleFrameworkClick} />
               ) : null}
             </>
           )}
@@ -641,5 +627,6 @@ export default function IndexDashboard() {
 
       <SummaryJobTracker />
     </div>
+    </WalkthroughProvider>
   );
 }

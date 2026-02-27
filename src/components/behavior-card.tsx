@@ -46,8 +46,8 @@ export interface BehaviorHit {
   traceId: string;
   turnIndex: number;
   chunkIndex: number;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
 }
 
 export interface BehaviorData {
@@ -59,7 +59,7 @@ export interface BehaviorData {
   hitCount: number;
   seedHitCount?: number;
   expandedQueries?: string[];
-  projects?: string[];
+  frameworks?: string[];
   hits: BehaviorHit[];
 }
 
@@ -91,19 +91,19 @@ export function BehaviorCard({
       </CardHeader>
 
       <CardContent className="flex flex-1 flex-col">
-        {behavior.projects && behavior.projects.length > 0 && (
+        {behavior.frameworks && behavior.frameworks.length > 0 && (
         <div className="ml-10 mt-3 flex flex-wrap gap-1.5">
-          {behavior.projects.slice(0, 4).map((project) => (
+          {behavior.frameworks.slice(0, 4).map((framework) => (
             <span
-              key={project}
+              key={framework}
               className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground"
             >
-              {project}
+              {framework}
             </span>
           ))}
-          {behavior.projects.length > 4 && (
+          {behavior.frameworks.length > 4 && (
             <span className="px-1 py-0.5 text-xs text-muted-foreground">
-              +{behavior.projects.length - 4}
+              +{behavior.frameworks.length - 4}
             </span>
           )}
         </div>
@@ -111,12 +111,8 @@ export function BehaviorCard({
 
         <div className="mt-auto flex items-center justify-between pt-4 text-xs text-muted-foreground">
           <span>
-            {behavior.seedHitCount != null && behavior.seedHitCount < behavior.hitCount ? (
-              <>{behavior.seedHitCount} &rarr; {behavior.hitCount} chunks</>
-            ) : (
-              <>{behavior.hitCount} chunks</>
-            )}
-            {behavior.projects && <>{" "}&middot; {behavior.projects.length} projects</>}
+            {behavior.hitCount} chunks
+            {behavior.frameworks && <>{" "}&middot; {behavior.frameworks.length} frameworks</>}
           </span>
           <span className="flex items-center gap-1 transition-colors group-hover:text-foreground">
             Explore <ArrowRight className="size-3" />

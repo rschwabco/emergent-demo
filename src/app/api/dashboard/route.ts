@@ -28,8 +28,8 @@ interface ParsedHit {
   traceId: string;
   turnIndex: number;
   chunkIndex: number;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
   behaviorId: string;
 }
 
@@ -48,8 +48,8 @@ function parseHit(
     traceId,
     turnIndex: (fields.turn_index as number) ?? (fields.chunk_index as number) ?? 0,
     chunkIndex: (fields.chunk_index as number) ?? 0,
-    project: (fields.project as string) || parts[0] || "",
-    issue: (fields.title as string) || parts[1] || "",
+    framework: (fields.project as string) || parts[0] || "",
+    trace: (fields.title as string) || parts[1] || "",
     behaviorId,
   };
 }
@@ -117,8 +117,8 @@ async function generateBehaviorInsight(
   return resp.choices[0]?.message?.content?.trim() ?? "";
 }
 
-async function generateProjectNarrative(
-  project: string,
+async function generateFrameworkNarrative(
+  framework: string,
   snippets: { behavior: string; text: string }[]
 ): Promise<string> {
   const openai = getOpenAIClient();
@@ -133,11 +133,11 @@ async function generateProjectNarrative(
       {
         role: "system",
         content:
-          "You analyze AI coding agent traces from SWE-bench. Given sample chunks from a specific open-source project, write a concise 1-2 sentence narrative about what kinds of issues agents tackle and how they approach them in this project. Be specific.",
+          "You analyze AI coding agent traces from SWE-bench. Given sample chunks from a specific open-source framework, write a concise 1-2 sentence narrative about what kinds of traces agents tackle and how they approach them in this framework. Be specific.",
       },
       {
         role: "user",
-        content: `Project: "${project}"\n\nSample trace chunks (labeled by behavior):\n${grouped}`,
+        content: `Framework: "${framework}"\n\nSample trace chunks (labeled by behavior):\n${grouped}`,
       },
     ],
   });
@@ -159,7 +159,7 @@ async function generateCrossCuttingInsights(
       {
         role: "system",
         content:
-          'You analyze AI coding agent traces from SWE-bench (141K chunks across 8 open-source projects). Given summaries of 10 behavior patterns, produce exactly 3-5 high-level observations about how agents work overall. Each observation should be a single punchy sentence. Return them as a JSON array of strings, e.g. ["observation 1", "observation 2", ...].',
+          'You analyze AI coding agent traces from SWE-bench (141K chunks across 8 open-source frameworks). Given summaries of 10 behavior patterns, produce exactly 3-5 high-level observations about how agents work overall. Each observation should be a single punchy sentence. Return them as a JSON array of strings, e.g. ["observation 1", "observation 2", ...].',
       },
       {
         role: "user",
@@ -308,11 +308,11 @@ export async function GET(request: Request) {
 
       allParsedHits.push(...parsed);
 
-      const projects = [...new Set(parsed.map((h) => h.project))];
+      const frameworks = [...new Set(parsed.map((h) => h.framework))];
       return {
         probe,
         parsed,
-        projects,
+        frameworks,
       };
     });
 
@@ -328,17 +328,17 @@ export async function GET(request: Request) {
     const isAgentTraces = indexName === DEFAULT_INDEX;
     let behaviorInsights: string[];
 
-    // 2b: Project narratives (only for agent-traces-semantic)
-    let projectEntries: [string, { behavior: string; text: string; hit: ParsedHit }[]][] = [];
-    let projectNarratives: string[] = [];
+    // 2b: Framework narratives (only for agent-traces-semantic)
+    let frameworkEntries: [string, { behavior: string; text: string; hit: ParsedHit }[]][] = [];
+    let frameworkNarratives: string[] = [];
 
     if (isAgentTraces) {
-      const projectHitsMap = new Map<
+      const frameworkHitsMap = new Map<
         string,
         { behavior: string; text: string; hit: ParsedHit }[]
       >();
       for (const hit of allParsedHits) {
-        const existing = projectHitsMap.get(hit.project) ?? [];
+        const existing = frameworkHitsMap.get(hit.framework) ?? [];
         const behavior =
           behaviorData.find((b) => b.probe.id === hit.behaviorId)?.probe.label ??
           hit.behaviorId;
@@ -347,26 +347,26 @@ export async function GET(request: Request) {
           text: truncateSnippet(hit.chunkText, 200),
           hit,
         });
-        projectHitsMap.set(hit.project, existing);
+        frameworkHitsMap.set(hit.framework, existing);
       }
 
-      projectEntries = [...projectHitsMap.entries()]
+      frameworkEntries = [...frameworkHitsMap.entries()]
         .filter(([, hits]) => hits.length >= 2)
         .sort((a, b) => b[1].length - a[1].length);
 
-      const projectNarrativePromises = projectEntries.map(([project, hits]) =>
-        generateProjectNarrative(
-          project,
+      const frameworkNarrativePromises = frameworkEntries.map(([framework, hits]) =>
+        generateFrameworkNarrative(
+          framework,
           hits.slice(0, 8).map((h) => ({ behavior: h.behavior, text: h.text }))
         )
       );
 
-      const [behaviorInsightsResult, ...projectNarrativesResult] = await Promise.all([
+      const [behaviorInsightsResult, ...frameworkNarrativesResult] = await Promise.all([
         Promise.all(behaviorInsightPromises),
-        ...projectNarrativePromises,
+        ...frameworkNarrativePromises,
       ]);
       behaviorInsights = behaviorInsightsResult;
-      projectNarratives = projectNarrativesResult;
+      frameworkNarratives = frameworkNarrativesResult;
     } else {
       behaviorInsights = await Promise.all(behaviorInsightPromises);
     }
@@ -380,7 +380,7 @@ export async function GET(request: Request) {
       await generateCrossCuttingInsights(behaviorSummaries);
 
     // Build response
-    const behaviors = behaviorData.map(({ probe, parsed, projects: probeProjects }, i) => ({
+    const behaviors = behaviorData.map(({ probe, parsed, frameworks: probeFrameworks }, i) => ({
       id: probe.id,
       label: probe.label,
       description: probe.description,
@@ -389,7 +389,7 @@ export async function GET(request: Request) {
       hitCount: parsed.length,
       seedHitCount: seedHitCounts.get(probe.id) ?? parsed.length,
       expandedQueries: expandedQueriesMap.get(probe.id) ?? [],
-      ...(isAgentTraces && { projects: probeProjects }),
+      ...(isAgentTraces && { frameworks: probeFrameworks }),
       hits: parsed.map((h) => ({
         id: h.id as string,
         score: h.score as number,
@@ -398,12 +398,12 @@ export async function GET(request: Request) {
         traceId: h.traceId,
         turnIndex: h.turnIndex,
         chunkIndex: h.chunkIndex,
-        project: h.project,
-        issue: h.issue,
+        framework: h.framework,
+        trace: h.trace,
       })),
     }));
 
-    const projects = projectEntries.map(([name, hits], i) => {
+    const frameworks = frameworkEntries.map(([name, hits], i) => {
       const behaviorCounts = new Map<string, number>();
       for (const h of hits) {
         behaviorCounts.set(
@@ -419,7 +419,7 @@ export async function GET(request: Request) {
       const topHit = hits[0].hit;
       return {
         name,
-        narrative: projectNarratives[i],
+        narrative: frameworkNarratives[i],
         topBehaviors,
         hitCount: hits.length,
         topHit: {
@@ -430,8 +430,8 @@ export async function GET(request: Request) {
           traceId: topHit.traceId,
           turnIndex: topHit.turnIndex,
           chunkIndex: topHit.chunkIndex,
-          project: topHit.project,
-          issue: topHit.issue,
+          framework: topHit.framework,
+          trace: topHit.trace,
         },
       };
     });
@@ -447,7 +447,7 @@ export async function GET(request: Request) {
       expanded: shouldExpand,
       crossCuttingInsights,
       behaviors,
-      projects,
+      frameworks,
       roleDistribution,
     };
 

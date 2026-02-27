@@ -20,8 +20,8 @@ interface ResultsSummaryProps {
     id: string;
     chunkText: string;
     role: string;
-    project: string;
-    issue: string;
+    framework: string;
+    trace: string;
     turnIndex: number;
   }[];
 }
@@ -224,8 +224,8 @@ export function ResultsSummary({ query, hits }: ResultsSummaryProps) {
             id: h.id,
             chunkText: h.chunkText,
             role: h.role,
-            project: h.project,
-            issue: h.issue,
+            framework: h.framework,
+            trace: h.trace,
             turnIndex: h.turnIndex,
           })),
         }),

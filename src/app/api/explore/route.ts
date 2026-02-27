@@ -50,8 +50,11 @@ export async function GET(request: Request) {
             traceId,
             turnIndex: fields.turn_index as number,
             chunkIndex: fields.chunk_index as number,
-            project: (fields.project as string) || parts[0] || "",
-            issue: (fields.title as string) || parts[1] || "",
+            framework: (fields.project as string) || parts[0] || "",
+            trace: (fields.title as string) || parts[1] || "",
+            tags: Array.isArray(fields.tags) ? fields.tags
+              : Array.isArray(fields[".tags"]) ? fields[".tags"]
+              : [],
           };
         });
 

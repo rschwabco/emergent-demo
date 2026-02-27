@@ -1,11 +1,18 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 
+export const EMERGENT_DEMO_SEMANTIC_INDEX_NAME =
+  process.env.PINECONE_INDEX_NAME || "agent-traces-semantic";
+export const EMERGENT_DEMO_NAMESPACE =
+  process.env.PINECONE_NAMESPACE || "traces";
+export const EMERGENT_DEMO_HOST = process.env.PINECONE_HOST || "";
+export const EMERGENT_DEMO_API_KEY = process.env.PINECONE_API_KEY || "";
+
 let pineconeInstance: Pinecone | null = null;
 
 export function getPineconeClient(): Pinecone {
   if (!process.env.PINECONE_API_KEY) {
     throw new Error(
-      "PINECONE_API_KEY is not set. Add it to .env.local or your Vercel environment variables."
+      "PINECONE_API_KEY is not set. Add it to .env.local."
     );
   }
 

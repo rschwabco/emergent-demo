@@ -53,7 +53,7 @@ export function TopicCard({
               <div className="mb-1 flex items-center gap-1.5">
                 <RoleBadge role={hit.role} />
                 <span className="text-muted-foreground">
-                  {hit.project}/{hit.issue}
+                  {hit.framework}/{hit.trace}
                 </span>
               </div>
               <p className="text-muted-foreground leading-relaxed">

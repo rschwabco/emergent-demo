@@ -30,7 +30,7 @@ interface LogEntry {
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [indexName, setIndexName] = useState("");
-  const [projectName, setProjectName] = useState("");
+  const [frameworkName, setFrameworkName] = useState("");
   const [namespace, setNamespace] = useState("");
   const [chunkSize, setChunkSize] = useState(800);
   const [chunkOverlap, setChunkOverlap] = useState(150);
@@ -96,7 +96,7 @@ export default function UploadPage() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("indexName", indexName.trim());
-    formData.append("projectName", projectName.trim());
+    formData.append("frameworkName", frameworkName.trim());
     formData.append("namespace", namespace.trim());
     formData.append("chunkSize", String(chunkSize));
     formData.append("chunkOverlap", String(chunkOverlap));
@@ -251,16 +251,16 @@ export default function UploadPage() {
             </div>
 
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="projectName">Project Name</Label>
+              <Label htmlFor="frameworkName">Framework Name</Label>
               <Input
-                id="projectName"
-                placeholder="e.g. my-project"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+                id="frameworkName"
+                placeholder="e.g. my-framework"
+                value={frameworkName}
+                onChange={(e) => setFrameworkName(e.target.value)}
                 disabled={uploading}
               />
               <p className="text-xs text-muted-foreground">
-                Groups all documents under one project in the dashboard. If blank, each document shows separately.
+                Groups all documents under one framework in the dashboard. If blank, each document shows separately.
               </p>
             </div>
 

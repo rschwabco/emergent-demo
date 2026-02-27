@@ -88,8 +88,8 @@ export async function GET(
 
     return NextResponse.json({
       traceId,
-      project: parts[0],
-      issue: parts[1],
+      framework: parts[0],
+      trace: parts[1],
       turnCount: turns.length,
       turns,
     });

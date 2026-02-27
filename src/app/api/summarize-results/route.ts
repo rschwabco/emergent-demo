@@ -24,8 +24,8 @@ interface HitPayload {
   id: string;
   chunkText: string;
   role: string;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
   turnIndex: number;
 }
 
@@ -36,29 +36,29 @@ function truncate(text: string, maxLen: number): string {
 
 function buildPromptContent(query: string, hits: HitPayload[]): string {
   const snippets = hits.slice(0, MAX_HITS_FOR_LLM).map((h, i) => {
-    const meta = `[${h.role}] ${h.project}/${h.issue} turn ${h.turnIndex}`;
+    const meta = `[${h.role}] ${h.framework}/${h.trace} turn ${h.turnIndex}`;
     return `${i + 1}. ${meta}\n${truncate(h.chunkText, MAX_CHUNK_LEN)}`;
   });
 
-  const projects = [...new Set(hits.map((h) => h.project))];
+  const frameworks = [...new Set(hits.map((h) => h.framework))];
   const roles = [...new Set(hits.map((h) => h.role))];
 
   return [
     `Search query: "${query}"`,
-    `Result set: ${hits.length} hits across ${projects.length} project(s) (${projects.join(", ")}), roles: ${roles.join(", ")}`,
+    `Result set: ${hits.length} hits across ${frameworks.length} framework(s) (${frameworks.join(", ")}), roles: ${roles.join(", ")}`,
     "",
     "Top result chunks:",
     ...snippets,
   ].join("\n");
 }
 
-const SYSTEM_PROMPT = `You analyze AI coding agent traces from SWE-bench (141K chunks across 8 open-source projects). Given a search query and its top result chunks, produce a concise summary of the result set.
+const SYSTEM_PROMPT = `You analyze AI coding agent traces from SWE-bench (141K chunks across 8 open-source frameworks). Given a search query and its top result chunks, produce a concise summary of the result set.
 
 Structure your response with exactly these 4 sections. Each heading MUST use the format **Category: Short descriptive title** where the title is specific to what you found (5-8 words, no period).
 
 **Patterns: <specific title>** 1-2 sentences on recurring strategies or approaches you see across results.
 **Common behaviors: <specific title>** 1-2 sentences on what agents tend to do (tool use, reasoning style, error handling, etc.).
-**Distribution: <specific title>** 1 sentence noting which projects or roles dominate and any clustering.
+**Distribution: <specific title>** 1 sentence noting which frameworks or roles dominate and any clustering.
 **Notable: <specific title>** 1 sentence on anything surprising or unusual in these results, if applicable.
 
 Example heading: **Patterns: Grep-first navigation before editing files**

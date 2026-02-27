@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
         traceId,
         turnIndex: meta.turn_index ?? 0,
         chunkIndex: meta.chunk_index ?? 0,
-        project: parts[0] ?? "",
-        issue: parts[1] ?? "",
+        framework: parts[0] ?? "",
+        trace: parts[1] ?? "",
         tags,
       };
     });
