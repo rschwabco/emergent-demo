@@ -1,64 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getPineconeClient,
-  EMERGENT_DEMO_SEMANTIC_INDEX_NAME,
-  EMERGENT_DEMO_NAMESPACE,
-} from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 
-export async function POST(request: NextRequest) {
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
+
+export async function GET(request: NextRequest) {
+  try {
+    const url = new URL(request.url);
+    const indexName = url.searchParams.get("indexName") || DEFAULT_INDEX;
+    const namespace = url.searchParams.get("namespace");
+    const resolvedNs = namespace ?? await resolveNamespace(indexName, DEFAULT_NAMESPACE);
+
+    const pc = getPineconeClient();
+    const idx = pc.index(indexName);
+
+    const response = await idx.fetchByMetadata({
+      filter: { tags: { $exists: true } },
+      limit: 1000,
+      namespace: resolvedNs,
+    });
+
+    const tagSet = new Set<string>();
+    for (const record of Object.values(response.records)) {
+      const meta = record.metadata as Record<string, unknown>;
+      const rawTags = meta.tags;
+      if (Array.isArray(rawTags)) {
+        for (const t of rawTags) {
+          if (typeof t === "string" && t.length > 0) tagSet.add(t);
+        }
+      }
+    }
+
+    return NextResponse.json({ tags: [...tagSet].sort() });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { recordId, tag, action } = body as {
-      recordId: string;
-      tag: string;
-      action: "add" | "remove";
+    const { updates, indexName, namespace } = body as {
+      updates: Array<{ id: string; tags: string[] }>;
+      indexName?: string;
+      namespace?: string;
     };
 
-    if (!recordId || !tag?.trim() || !action) {
+    if (!updates?.length) {
       return NextResponse.json(
-        { error: "recordId, tag, and action are required" },
+        { error: "updates array is required" },
         { status: 400 }
       );
     }
 
-    const normalizedTag = tag.trim().toLowerCase();
+    const idxName = indexName || DEFAULT_INDEX;
+    const resolvedNs = namespace ?? await resolveNamespace(idxName, DEFAULT_NAMESPACE);
     const pc = getPineconeClient();
-    const idx = pc.index(EMERGENT_DEMO_SEMANTIC_INDEX_NAME);
-    const ns = idx.namespace(EMERGENT_DEMO_NAMESPACE);
+    const idx = pc.index(idxName);
 
-    // Fetch the current record to get existing tags
-    const fetched = await ns.fetch({ ids: [recordId] });
-    const record = fetched.records?.[recordId];
+    await Promise.all(
+      updates.map((u) =>
+        idx.update({
+          id: u.id,
+          metadata: { tags: u.tags },
+          namespace: resolvedNs,
+        })
+      )
+    );
 
-    if (!record) {
-      return NextResponse.json(
-        { error: `Record ${recordId} not found` },
-        { status: 404 }
-      );
-    }
-
-    const metadata = (record.metadata || {}) as Record<string, unknown>;
-    const existingTags: string[] = Array.isArray(metadata.tags)
-      ? (metadata.tags as string[])
-      : [];
-
-    let newTags: string[];
-    if (action === "add") {
-      if (existingTags.includes(normalizedTag)) {
-        return NextResponse.json({ tags: existingTags });
-      }
-      newTags = [...existingTags, normalizedTag];
-    } else {
-      newTags = existingTags.filter((t) => t !== normalizedTag);
-    }
-
-    // Update just the metadata (no re-embedding needed)
-    await ns.update({
-      id: recordId,
-      metadata: { tags: newTags },
-    });
-
-    return NextResponse.json({ tags: newTags });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown error occurred";

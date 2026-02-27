@@ -1,24 +1,50 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SearchHit } from "@/components/search-results";
 
-/** Pinned facets always show, even with no results. */
-const PINNED_FACETS: {
+export type FacetSelection = Record<string, Set<string>>;
+
+interface FacetBucket {
+  value: string;
+  count: number;
+}
+
+interface Facet {
+  key: string;
+  label: string;
+  buckets: FacetBucket[];
+  searchable?: boolean;
+}
+
+interface FacetDef {
   key: string;
   label: string;
   type: "string" | "array";
   knownValues?: string[];
-}[] = [
-  {
-    key: "tags",
-    label: "Tags",
-    type: "array",
-  },
+  dynamic?: boolean;
+  searchable?: boolean;
+}
+
+const PINNED_FACETS: FacetDef[] = [
+  { key: "tags", label: "Tags", type: "array" },
   {
     key: "role",
     label: "Role",
@@ -42,72 +68,78 @@ const PINNED_FACETS: {
   },
 ];
 
-/** Dynamic facets only show when they have 2+ values in results. */
-const DYNAMIC_FACETS: { key: keyof SearchHit; label: string }[] = [
-  { key: "issue", label: "Issue" },
+const DYNAMIC_FACETS: FacetDef[] = [
+  { key: "issue", label: "Issue", type: "string", dynamic: true, searchable: true },
 ];
 
-export type FacetSelection = Record<string, Set<string>>;
-
-interface FacetPanelProps {
-  hits: SearchHit[];
-  selection: FacetSelection;
-  onSelectionChange: (selection: FacetSelection) => void;
+function getHitValue(hit: SearchHit, key: string): string | string[] | undefined {
+  return (hit as unknown as Record<string, unknown>)[key] as string | string[] | undefined;
 }
 
-interface Facet {
-  key: string;
-  label: string;
-  buckets: { value: string; count: number }[];
+function sortBuckets(buckets: FacetBucket[]): FacetBucket[] {
+  return buckets.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.value.localeCompare(b.value);
+  });
 }
 
-function buildFacets(hits: SearchHit[]): Facet[] {
+export function buildFacets(
+  hits: SearchHit[],
+  hiddenFacets?: string[]
+): Facet[] {
+  const hidden = new Set(hiddenFacets ?? []);
   const facets: Facet[] = [];
 
-  // Pinned facets: always show
-  for (const { key, label, type, knownValues } of PINNED_FACETS) {
+  for (const def of PINNED_FACETS) {
+    if (hidden.has(def.key)) continue;
+
     const counts = new Map<string, number>();
 
+    if (def.knownValues) {
+      for (const v of def.knownValues) counts.set(v, 0);
+    }
+
     for (const hit of hits) {
-      const raw = (hit as unknown as Record<string, unknown>)[key];
-      if (type === "array" && Array.isArray(raw)) {
-        for (const v of raw) {
-          const val = String(v);
-          if (val) counts.set(val, (counts.get(val) || 0) + 1);
+      const val = getHitValue(hit, def.key);
+      if (val == null) continue;
+
+      if (def.type === "array" && Array.isArray(val)) {
+        for (const v of val) {
+          counts.set(v, (counts.get(v) ?? 0) + 1);
         }
-      } else if (type === "string") {
-        const val = String(raw ?? "");
-        if (val) counts.set(val, (counts.get(val) || 0) + 1);
+      } else if (typeof val === "string" && val) {
+        counts.set(val, (counts.get(val) ?? 0) + 1);
       }
     }
 
-    // For pinned facets with known values, always include those values
-    if (knownValues) {
-      for (const v of knownValues) {
-        if (!counts.has(v)) counts.set(v, 0);
-      }
+    const buckets: FacetBucket[] = [];
+    for (const [value, count] of counts) {
+      buckets.push({ value, count });
     }
 
-    const buckets = Array.from(counts.entries())
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
-
-    // Always show pinned facets (even if empty)
-    facets.push({ key, label, buckets });
+    facets.push({ key: def.key, label: def.label, buckets: sortBuckets(buckets), searchable: def.searchable });
   }
 
-  // Dynamic facets: only show with 2+ distinct values
-  for (const { key, label } of DYNAMIC_FACETS) {
+  for (const def of DYNAMIC_FACETS) {
+    if (hidden.has(def.key)) continue;
+
     const counts = new Map<string, number>();
+
     for (const hit of hits) {
-      const val = String(hit[key] ?? "");
-      if (val) counts.set(val, (counts.get(val) || 0) + 1);
+      const val = getHitValue(hit, def.key);
+      if (typeof val === "string" && val) {
+        counts.set(val, (counts.get(val) ?? 0) + 1);
+      }
     }
+
     if (counts.size < 2) continue;
-    const buckets = Array.from(counts.entries())
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count);
-    facets.push({ key, label, buckets });
+
+    const buckets: FacetBucket[] = [];
+    for (const [value, count] of counts) {
+      buckets.push({ value, count });
+    }
+
+    facets.push({ key: def.key, label: def.label, buckets: sortBuckets(buckets), searchable: def.searchable });
   }
 
   return facets;
@@ -117,33 +149,130 @@ export function applyFacetFilters(
   hits: SearchHit[],
   selection: FacetSelection
 ): SearchHit[] {
-  return hits.filter((hit) => {
-    for (const [key, values] of Object.entries(selection)) {
-      if (values.size === 0) continue;
-      const raw = (hit as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(raw)) {
-        // For array fields (tags): hit must have at least one of the selected values
-        const hitVals = raw.map(String);
-        if (!hitVals.some((v) => values.has(v))) return false;
-      } else {
-        const hitVal = String(raw ?? "");
-        if (!values.has(hitVal)) return false;
+  const activeKeys = Object.keys(selection).filter(
+    (k) => selection[k] && selection[k].size > 0
+  );
+  if (activeKeys.length === 0) return hits;
+
+  const allDefs = [...PINNED_FACETS, ...DYNAMIC_FACETS];
+  const defMap = new Map(allDefs.map((d) => [d.key, d]));
+
+  return hits.filter((hit) =>
+    activeKeys.every((key) => {
+      const set = selection[key];
+      const def = defMap.get(key);
+      const val = getHitValue(hit, key);
+
+      if (def?.type === "array" && Array.isArray(val)) {
+        return val.some((v) => set.has(v));
       }
-    }
-    return true;
-  });
+      if (typeof val === "string") {
+        return set.has(val);
+      }
+      return false;
+    })
+  );
 }
 
 export function hasActiveFacets(selection: FacetSelection): boolean {
-  return Object.values(selection).some((s) => s.size > 0);
+  return Object.values(selection).some((s) => s && s.size > 0);
+}
+
+interface FacetPanelProps {
+  hits: SearchHit[];
+  selection: FacetSelection;
+  onSelectionChange: (selection: FacetSelection) => void;
+  hiddenFacets?: string[];
+}
+
+function SearchableFacetRow({
+  facet,
+  selected,
+  onToggle,
+}: {
+  facet: Facet;
+  selected: Set<string>;
+  onToggle: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedBuckets = facet.buckets.filter((b) => selected.has(b.value));
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
+        {facet.label}
+      </span>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 gap-1 px-2 text-[11px] font-normal"
+          >
+            {selected.size > 0
+              ? `${selected.size} selected`
+              : `${facet.buckets.length} issues`}
+            <ChevronsUpDown className="size-3 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-60 p-0" align="start">
+          <Command>
+            <CommandInput placeholder={`Search ${facet.label.toLowerCase()}...`} />
+            <CommandList>
+              <CommandEmpty>No matches.</CommandEmpty>
+              <CommandGroup>
+                {facet.buckets.map((bucket) => {
+                  const isSelected = selected.has(bucket.value);
+                  return (
+                    <CommandItem
+                      key={bucket.value}
+                      value={bucket.value}
+                      onSelect={() => onToggle(bucket.value)}
+                    >
+                      <Check
+                        className={cn(
+                          "size-3.5",
+                          isSelected ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <span className="truncate">{bucket.value}</span>
+                      <span className="ml-auto tabular-nums text-muted-foreground text-[11px]">
+                        {bucket.count}
+                      </span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {selectedBuckets.map((bucket) => (
+        <Badge
+          key={bucket.value}
+          variant="default"
+          className="cursor-pointer select-none gap-1 text-[11px]"
+          onClick={() => onToggle(bucket.value)}
+        >
+          {bucket.value}
+          <span className="tabular-nums opacity-75">{bucket.count}</span>
+          <X className="size-2.5" />
+        </Badge>
+      ))}
+    </div>
+  );
 }
 
 export function FacetPanel({
   hits,
   selection,
   onSelectionChange,
+  hiddenFacets,
 }: FacetPanelProps) {
-  const facets = useMemo(() => buildFacets(hits), [hits]);
+  const facets = useMemo(
+    () => buildFacets(hits, hiddenFacets),
+    [hits, hiddenFacets]
+  );
 
   const toggle = (facetKey: string, value: string) => {
     const prev = selection[facetKey] ?? new Set<string>();
@@ -166,61 +295,70 @@ export function FacetPanel({
 
   const active = hasActiveFacets(selection);
 
+  if (facets.length === 0) return null;
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground text-xs font-medium">
-          Filter by
-        </span>
-        {active && (
-          <Button
-            variant="ghost"
-            size="xs"
-            className="text-muted-foreground gap-1 text-[11px]"
-            onClick={clearAll}
-          >
-            <X className="size-3" />
-            Clear filters
-          </Button>
-        )}
-      </div>
       {facets.map((facet) => {
-        if (facet.buckets.length === 0) return null;
+        const selected = selection[facet.key] ?? new Set<string>();
+
+        if (facet.searchable) {
+          return (
+            <SearchableFacetRow
+              key={facet.key}
+              facet={facet}
+              selected={selected}
+              onToggle={(value) => toggle(facet.key, value)}
+            />
+          );
+        }
+
         return (
-          <div key={facet.key} className="flex flex-wrap items-center gap-1.5">
-            <span className="text-muted-foreground w-14 shrink-0 text-[11px]">
+          <div key={facet.key} className="flex items-center gap-2 flex-wrap">
+            <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
               {facet.label}
             </span>
-            {facet.buckets.map((bucket) => {
-              const selected = selection[facet.key]?.has(bucket.value) ?? false;
-              return (
-                <Badge
-                  key={bucket.value}
-                  variant={selected ? "default" : "outline"}
-                  className={cn(
-                    "cursor-pointer gap-1 text-[11px] transition-colors",
-                    !selected && "hover:bg-muted",
-                    !selected && bucket.count === 0 && "opacity-40"
-                  )}
-                  onClick={() => toggle(facet.key, bucket.value)}
-                >
-                  {bucket.value}
-                  <span
+            <div className="flex flex-wrap items-center gap-1">
+              {facet.buckets.map((bucket) => {
+                const isSelected = selected.has(bucket.value);
+                return (
+                  <Badge
+                    key={bucket.value}
+                    variant={isSelected ? "default" : "outline"}
                     className={cn(
-                      "tabular-nums",
-                      selected
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground"
+                      "cursor-pointer select-none text-[11px]",
+                      !isSelected && "hover:bg-accent",
+                      !isSelected && bucket.count === 0 && "opacity-40"
                     )}
+                    onClick={() => toggle(facet.key, bucket.value)}
                   >
-                    {bucket.count}
-                  </span>
-                </Badge>
-              );
-            })}
+                    {bucket.value}
+                    <span
+                      className={cn(
+                        "tabular-nums",
+                        isSelected ? "opacity-75" : "text-muted-foreground"
+                      )}
+                    >
+                      {bucket.count}
+                    </span>
+                  </Badge>
+                );
+              })}
+            </div>
           </div>
         );
       })}
+      {active && (
+        <Button
+          variant="ghost"
+          size="xs"
+          className="self-start gap-1 text-muted-foreground text-[11px]"
+          onClick={clearAll}
+        >
+          <X className="size-3" />
+          Clear filters
+        </Button>
+      )}
     </div>
   );
 }

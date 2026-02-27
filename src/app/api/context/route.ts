@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPineconeClient, EMERGENT_DEMO_SEMANTIC_INDEX_NAME, EMERGENT_DEMO_NAMESPACE } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
+
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
 
 export async function POST(request: NextRequest) {
   try {
-    const { traceId, turnIndex, radius = 2 } = (await request.json()) as {
+    const { traceId, turnIndex, radius = 2, indexName, namespace } = (await request.json()) as {
       traceId: string;
       turnIndex: number;
       radius?: number;
+      indexName?: string;
+      namespace?: string;
     };
 
     if (!traceId || turnIndex == null) {
@@ -16,9 +21,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const idxName = indexName || DEFAULT_INDEX;
+    const resolvedNs = namespace ?? await resolveNamespace(idxName, DEFAULT_NAMESPACE);
     const pc = getPineconeClient();
-    const idx = pc.index(EMERGENT_DEMO_SEMANTIC_INDEX_NAME);
-    const ns = idx.namespace(EMERGENT_DEMO_NAMESPACE);
+    const idx = pc.index(idxName);
+    const ns = idx.namespace(resolvedNs);
 
     const minTurn = Math.max(0, turnIndex - radius);
     const maxTurn = turnIndex + radius;
@@ -29,7 +36,12 @@ export async function POST(request: NextRequest) {
         inputs: { text: traceId },
         filter: {
           $and: [
-            { trace_id: { $eq: traceId } },
+            {
+              $or: [
+                { trace_id: { $eq: traceId } },
+                { source_id: { $eq: traceId } },
+              ],
+            },
             { turn_index: { $gte: minTurn } },
             { turn_index: { $lte: maxTurn } },
           ],

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -18,6 +17,25 @@ import {
 } from "@/components/ui/command";
 import { Tag, X, Check, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const TAG_COLORS = [
+  "bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
+  "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800",
+  "bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800",
+  "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
+  "bg-rose-100 text-rose-800 border-rose-200 hover:bg-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800",
+  "bg-cyan-100 text-cyan-800 border-cyan-200 hover:bg-cyan-200 dark:bg-cyan-950 dark:text-cyan-300 dark:border-cyan-800",
+  "bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800",
+  "bg-indigo-100 text-indigo-800 border-indigo-200 hover:bg-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800",
+];
+
+function getTagColor(tag: string) {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+}
 
 interface TagBarProps {
   selectedCount: number;
@@ -160,38 +178,42 @@ export function TagFilter({
   if (tags.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-muted-foreground text-xs mr-1">Tags:</span>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-muted-foreground text-xs font-medium mr-0.5 flex items-center gap-1">
+        <Tag className="size-3" />
+        Tags:
+      </span>
       {tags.map((tag) => {
         const isActive = activeTag === tag;
         const count = tagCounts[tag] || 0;
         return (
-          <Badge
+          <span
             key={tag}
-            variant={isActive ? "default" : "outline"}
             className={cn(
-              "cursor-pointer gap-1 transition-colors select-none",
-              isActive && "ring-2 ring-ring/30"
+              "inline-flex cursor-pointer items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-all select-none",
+              getTagColor(tag),
+              isActive && "ring-2 ring-ring/40 shadow-sm"
             )}
             onClick={() => onTagFilter(isActive ? null : tag)}
           >
+            <Tag className="size-3" />
             {tag}
             {count > 0 && (
-              <span className="text-[10px] opacity-70">({count})</span>
+              <span className="opacity-60 tabular-nums">({count})</span>
             )}
             {isActive && <Check className="size-3" />}
             {onDeleteTag && (
               <button
-                className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20"
+                className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDeleteTag(tag);
                 }}
               >
-                <X className="size-2.5" />
+                <X className="size-3" />
               </button>
             )}
-          </Badge>
+          </span>
         );
       })}
       {activeTag && (

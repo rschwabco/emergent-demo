@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
-import { getPineconeClient, EMERGENT_DEMO_SEMANTIC_INDEX_NAME, EMERGENT_DEMO_NAMESPACE } from "@/lib/pinecone";
+import { getPineconeClient, resolveNamespace } from "@/lib/pinecone";
 import { PROBES } from "@/lib/explore-probes";
+
+const DEFAULT_INDEX = "agent-traces-semantic";
+const DEFAULT_NAMESPACE = "traces";
 const HITS_PER_PROBE = 4;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const indexName = url.searchParams.get("indexName") || DEFAULT_INDEX;
+    const namespace = url.searchParams.get("namespace");
+    const resolvedNs = namespace ?? await resolveNamespace(indexName, DEFAULT_NAMESPACE);
+
     const pc = getPineconeClient();
-    const idx = pc.index(EMERGENT_DEMO_SEMANTIC_INDEX_NAME);
-    const ns = idx.namespace(EMERGENT_DEMO_NAMESPACE);
+    const idx = pc.index(indexName);
+    const ns = idx.namespace(resolvedNs);
 
     const probeResults = await Promise.all(
       PROBES.map(async (probe) => {
@@ -32,7 +40,7 @@ export async function GET() {
         })
         .map((hit) => {
           const fields = hit.fields as Record<string, unknown>;
-          const traceId = fields.trace_id as string;
+          const traceId = (fields.trace_id as string) ?? (fields.source_id as string) ?? "";
           const parts = traceId.replace(".json", "").split("__");
           return {
             id: hit._id,
@@ -42,8 +50,8 @@ export async function GET() {
             traceId,
             turnIndex: fields.turn_index as number,
             chunkIndex: fields.chunk_index as number,
-            project: parts[0],
-            issue: parts[1],
+            project: (fields.project as string) || parts[0] || "",
+            issue: (fields.title as string) || parts[1] || "",
             tags: Array.isArray(fields.tags) ? fields.tags
               : Array.isArray(fields[".tags"]) ? fields[".tags"]
               : [],

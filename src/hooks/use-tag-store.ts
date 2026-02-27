@@ -1,166 +1,302 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import type { SearchHit } from "@/components/search-results";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 
 export interface TagStore {
-  /** All known tag names from current hits, sorted alphabetically */
   tags: string[];
-  /** Assign a tag to hit IDs (calls the API and updates local hits) */
+  assignments: Record<string, string[]>;
   assignTag: (hitIds: string[], tag: string) => void;
-  /** Remove a tag from a hit (calls the API and updates local hits) */
   unassignTag: (hitId: string, tag: string) => void;
-  /** Get tags for a hit from its data */
+  removeTag: (name: string) => void;
   getTagsForHit: (hitId: string) => string[];
-  /** Get hit IDs that have a given tag */
   getHitIdsForTag: (tag: string) => Set<string>;
-  /** Remove a tag from all hits */
-  removeTag: (tag: string) => void;
+  syncFromHits: (hits: Array<{ id: string; tags: string[] }>) => void;
+  loadFromServer: () => Promise<void>;
+  setIndexName: (name: string) => void;
 }
 
-async function apiTagAction(
-  recordId: string,
-  tag: string,
-  action: "add" | "remove"
-): Promise<string[] | null> {
+const LS_TAGS_KEY = "trace-explorer:tags";
+const LS_ASSIGNMENTS_KEY = "trace-explorer:tag-assignments";
+
+function readLocalTags(): string[] {
   try {
-    const res = await fetch("/api/tags", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recordId, tag, action }),
-    });
-    const data = await res.json();
-    if (data.error) {
-      console.error(`Tag ${action} failed:`, data.error);
-      return null;
-    }
-    return data.tags;
-  } catch (err) {
-    console.error(`Tag ${action} failed:`, err);
-    return null;
+    const raw = localStorage.getItem(LS_TAGS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
   }
 }
 
-export function useTagStore(
-  hits: SearchHit[],
-  setHits: React.Dispatch<React.SetStateAction<SearchHit[]>>
-): TagStore {
-  const tags = useMemo(() => {
-    const tagSet = new Set<string>();
-    for (const hit of hits) {
-      if (hit.tags) {
-        for (const t of hit.tags) tagSet.add(t);
-      }
+function readLocalAssignments(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(LS_ASSIGNMENTS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalTags(tags: string[]) {
+  try {
+    localStorage.setItem(LS_TAGS_KEY, JSON.stringify(tags));
+  } catch { /* quota exceeded, ignore */ }
+}
+
+function writeLocalAssignments(assignments: Record<string, string[]>) {
+  try {
+    localStorage.setItem(LS_ASSIGNMENTS_KEY, JSON.stringify(assignments));
+  } catch { /* quota exceeded, ignore */ }
+}
+
+async function persistToPinecone(
+  updates: Array<{ id: string; tags: string[] }>,
+  indexName?: string
+): Promise<boolean> {
+  try {
+    const body: Record<string, unknown> = { updates };
+    if (indexName) body.indexName = indexName;
+    const res = await fetch("/api/tags", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return true;
+  } catch (err) {
+    console.error("Failed to persist tags to Pinecone:", err);
+    return false;
+  }
+}
+
+export function useTagStore(): TagStore {
+  const [tags, setTags] = useState<string[]>([]);
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+  const assignmentsRef = useRef(assignments);
+  assignmentsRef.current = assignments;
+  const initializedRef = useRef(false);
+  const indexNameRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    const savedTags = readLocalTags();
+    const savedAssignments = readLocalAssignments();
+    if (savedTags.length > 0) setTags(savedTags);
+    if (Object.keys(savedAssignments).length > 0) {
+      setAssignments(savedAssignments);
+      assignmentsRef.current = savedAssignments;
     }
-    return Array.from(tagSet).sort();
-  }, [hits]);
+  }, []);
+
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    writeLocalTags(tags);
+  }, [tags]);
+
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    writeLocalAssignments(assignments);
+  }, [assignments]);
+
+  const setIndexName = useCallback((name: string) => {
+    indexNameRef.current = name;
+  }, []);
+
+  const loadFromServer = useCallback(async () => {
+    try {
+      const params = indexNameRef.current ? `?indexName=${encodeURIComponent(indexNameRef.current)}` : "";
+      const res = await fetch(`/api/tags${params}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const serverTags: string[] = data.tags ?? [];
+      if (serverTags.length > 0) {
+        setTags((prev) => {
+          const merged = new Set([...prev, ...serverTags]);
+          return [...merged].sort();
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load tags from server:", err);
+    }
+  }, []);
+
+  const syncFromHits = useCallback(
+    (hits: Array<{ id: string; tags: string[] }>) => {
+      const current = assignmentsRef.current;
+      let changed = false;
+      const nextAssignments: Record<string, string[]> = { ...current };
+
+      for (const hit of hits) {
+        const hitTags = hit.tags ?? [];
+        if (hitTags.length > 0) {
+          const prev = current[hit.id];
+          if (!prev || prev.length !== hitTags.length || prev.some((t, i) => t !== hitTags[i])) {
+            nextAssignments[hit.id] = hitTags;
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        setAssignments(nextAssignments);
+      }
+
+      setTags((prev) => {
+        const allTags = new Set<string>(prev);
+        let added = false;
+        for (const hit of hits) {
+          for (const t of hit.tags ?? []) {
+            if (!allTags.has(t)) {
+              allTags.add(t);
+              added = true;
+            }
+          }
+        }
+        return added ? [...allTags].sort() : prev;
+      });
+    },
+    []
+  );
 
   const assignTag = useCallback(
     (hitIds: string[], tag: string) => {
       const normalized = tag.trim().toLowerCase();
       if (!normalized) return;
 
-      // Optimistically update local state
-      setHits((prev) =>
-        prev.map((h) => {
-          if (!hitIds.includes(h.id)) return h;
-          if (h.tags?.includes(normalized)) return h;
-          return { ...h, tags: [...(h.tags || []), normalized] };
-        })
-      );
-
-      // Fire API calls (don't await — fire and forget with error rollback)
+      const prevAssignments = assignmentsRef.current;
+      const snapshot: Record<string, string[] | undefined> = {};
       for (const id of hitIds) {
-        apiTagAction(id, normalized, "add").then((serverTags) => {
-          if (serverTags === null) {
-            // Rollback on failure
-            setHits((prev) =>
-              prev.map((h) =>
-                h.id === id
-                  ? { ...h, tags: (h.tags || []).filter((t) => t !== normalized) }
-                  : h
-              )
-            );
-          }
-        });
+        snapshot[id] = prevAssignments[id] ? [...prevAssignments[id]] : undefined;
       }
-    },
-    [setHits]
-  );
 
-  const unassignTag = useCallback(
-    (hitId: string, tag: string) => {
-      // Optimistically update
-      setHits((prev) =>
-        prev.map((h) =>
-          h.id === hitId
-            ? { ...h, tags: (h.tags || []).filter((t) => t !== tag) }
-            : h
-        )
-      );
-
-      apiTagAction(hitId, tag, "remove").then((serverTags) => {
-        if (serverTags === null) {
-          // Rollback
-          setHits((prev) =>
-            prev.map((h) =>
-              h.id === hitId
-                ? { ...h, tags: [...(h.tags || []), tag] }
-                : h
-            )
+      const isNewTag = !assignmentsRef.current
+        ? true
+        : !Object.values(assignmentsRef.current).some((tags) =>
+            tags.includes(normalized)
           );
+
+      setTags((prev) => {
+        if (prev.includes(normalized)) return prev;
+        return [...prev, normalized].sort();
+      });
+
+      const updates: Array<{ id: string; tags: string[] }> = [];
+      const nextAssignments = { ...prevAssignments };
+      for (const id of hitIds) {
+        const existing = nextAssignments[id] || [];
+        if (!existing.includes(normalized)) {
+          nextAssignments[id] = [...existing, normalized];
+        }
+        updates.push({ id, tags: nextAssignments[id] });
+      }
+      setAssignments(nextAssignments);
+
+      persistToPinecone(updates, indexNameRef.current).then((ok) => {
+        if (ok) return;
+        setAssignments((prev) => {
+          const reverted = { ...prev };
+          for (const id of hitIds) {
+            const original = snapshot[id];
+            if (original === undefined) {
+              delete reverted[id];
+            } else {
+              reverted[id] = original;
+            }
+          }
+          return reverted;
+        });
+        if (isNewTag) {
+          setTags((prev) => {
+            const stillUsed = Object.values(assignmentsRef.current).some(
+              (tags) => tags.includes(normalized)
+            );
+            if (stillUsed) return prev;
+            return prev.filter((t) => t !== normalized);
+          });
         }
       });
     },
-    [setHits]
+    []
   );
 
+  const unassignTag = useCallback((hitId: string, tag: string) => {
+    const snapshotTags = assignmentsRef.current[hitId]
+      ? [...assignmentsRef.current[hitId]]
+      : [];
+
+    const newTags = snapshotTags.filter((t) => t !== tag);
+    const nextAssignments = { ...assignmentsRef.current };
+    if (newTags.length === 0) {
+      delete nextAssignments[hitId];
+    } else {
+      nextAssignments[hitId] = newTags;
+    }
+    setAssignments(nextAssignments);
+
+    persistToPinecone(
+      [{ id: hitId, tags: newTags }],
+      indexNameRef.current
+    ).then((ok) => {
+      if (ok) return;
+      setAssignments((prev) => ({
+        ...prev,
+        [hitId]: snapshotTags,
+      }));
+    });
+  }, []);
+
+  const removeTag = useCallback((name: string) => {
+    setTags((prev) => prev.filter((t) => t !== name));
+    setAssignments((prev) => {
+      const next = { ...prev };
+      const updates: Array<{ id: string; tags: string[] }> = [];
+
+      for (const hitId of Object.keys(next)) {
+        if (next[hitId].includes(name)) {
+          next[hitId] = next[hitId].filter((t) => t !== name);
+          if (next[hitId].length === 0) {
+            delete next[hitId];
+            updates.push({ id: hitId, tags: [] });
+          } else {
+            updates.push({ id: hitId, tags: next[hitId] });
+          }
+        }
+      }
+
+      if (updates.length > 0) persistToPinecone(updates, indexNameRef.current);
+      return next;
+    });
+  }, []);
+
   const getTagsForHit = useCallback(
-    (hitId: string) => {
-      const hit = hits.find((h) => h.id === hitId);
-      return hit?.tags || [];
-    },
-    [hits]
+    (hitId: string) => assignments[hitId] || [],
+    [assignments]
   );
 
   const getHitIdsForTag = useCallback(
     (tag: string) => {
       const ids = new Set<string>();
-      for (const hit of hits) {
-        if (hit.tags?.includes(tag)) ids.add(hit.id);
+      for (const [hitId, hitTags] of Object.entries(assignments)) {
+        if (hitTags.includes(tag)) ids.add(hitId);
       }
       return ids;
     },
-    [hits]
+    [assignments]
   );
 
-  const removeTag = useCallback(
-    (tag: string) => {
-      // Find all hits that have this tag, remove from each
-      const affectedIds = hits.filter((h) => h.tags?.includes(tag)).map((h) => h.id);
-
-      // Optimistically update
-      setHits((prev) =>
-        prev.map((h) =>
-          h.tags?.includes(tag)
-            ? { ...h, tags: h.tags.filter((t) => t !== tag) }
-            : h
-        )
-      );
-
-      for (const id of affectedIds) {
-        apiTagAction(id, tag, "remove");
-      }
-    },
-    [hits, setHits]
+  return useMemo(
+    () => ({
+      tags,
+      assignments,
+      assignTag,
+      unassignTag,
+      removeTag,
+      getTagsForHit,
+      getHitIdsForTag,
+      syncFromHits,
+      loadFromServer,
+      setIndexName,
+    }),
+    [tags, assignments, assignTag, unassignTag, removeTag, getTagsForHit, getHitIdsForTag, syncFromHits, loadFromServer, setIndexName]
   );
-
-  return {
-    tags,
-    assignTag,
-    unassignTag,
-    getTagsForHit,
-    getHitIdsForTag,
-    removeTag,
-  };
 }
