@@ -52,6 +52,9 @@ export async function GET(request: Request) {
             chunkIndex: fields.chunk_index as number,
             project: (fields.project as string) || parts[0] || "",
             issue: (fields.title as string) || parts[1] || "",
+            tags: Array.isArray(fields.tags) ? fields.tags
+              : Array.isArray(fields[".tags"]) ? fields[".tags"]
+              : [],
           };
         });
 
