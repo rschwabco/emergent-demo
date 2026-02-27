@@ -6,7 +6,7 @@ test.describe("Trace viewer", () => {
 
     const searchInput = page.getByPlaceholder(/Search agent traces/);
     await searchInput.fill("debugging");
-    await page.getByRole("button", { name: "Search" }).click();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
 
     const traceLink = page.locator("a[href*='/trace/']").first();
     await expect(traceLink).toBeVisible({ timeout: 30_000 });
@@ -26,7 +26,7 @@ test.describe("Trace viewer", () => {
 
     const searchInput = page.getByPlaceholder(/Search agent traces/);
     await searchInput.fill("debugging");
-    await page.getByRole("button", { name: "Search" }).click();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
 
     const traceLink = page.locator("a[href*='/trace/']").first();
     await expect(traceLink).toBeVisible({ timeout: 30_000 });

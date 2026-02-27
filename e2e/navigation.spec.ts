@@ -18,13 +18,16 @@ test.describe("Navigation and page loading", () => {
     ).toBeVisible();
   });
 
-  test("main page loads dashboard stats", async ({ page }) => {
+  test("main page loads dashboard content", async ({ page }) => {
     await page.goto("/index/agent-traces-semantic");
 
-    await expect(page.getByText("Chunks Indexed")).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByText("Behavior Patterns")).toBeVisible();
+    await expect(
+      page.getByText("Agent Behavior Patterns")
+    ).toBeVisible({ timeout: 15_000 });
+
+    await expect(
+      page.locator("header").getByText(/chunks$/)
+    ).toBeVisible();
   });
 
   test("navigate to compare page and back", async ({ page }) => {
