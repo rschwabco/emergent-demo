@@ -48,7 +48,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, BarChart3, Brain, Sparkles, Loader2, Upload, Database, Trash2 } from "lucide-react";
+import { ArrowLeft, BarChart3, Brain, Loader2, Upload, Database, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 interface DashboardData {
@@ -150,6 +150,24 @@ export default function IndexDashboard() {
     }
   }, [activeIndex, indexes, router]);
 
+  const expandDashboard = useCallback((indexName: string) => {
+    setExpanding(true);
+    const params = new URLSearchParams({
+      bust: "1",
+      expand: "1",
+      indexName,
+    });
+    fetch(`/api/dashboard?${params}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (activeIndexRef.current === indexName && !data.error) {
+          setDashboard(data);
+        }
+      })
+      .catch((err) => console.error("Expansion failed:", err))
+      .finally(() => setExpanding(false));
+  }, []);
+
   const loadDashboard = useCallback((indexName: string, bust = false) => {
     setDashboardLoading(true);
     const params = new URLSearchParams({ indexName });
@@ -157,15 +175,19 @@ export default function IndexDashboard() {
     fetch(`/api/dashboard?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        if (!data.error) setDashboard(data);
-        else setDashboard(null);
+        if (!data.error) {
+          setDashboard(data);
+          if (!data.expanded) expandDashboard(indexName);
+        } else {
+          setDashboard(null);
+        }
       })
       .catch((err) => {
         console.error("Dashboard failed:", err);
         setDashboard(null);
       })
       .finally(() => setDashboardLoading(false));
-  }, []);
+  }, [expandDashboard]);
 
   useEffect(() => {
     loadDashboard(activeIndex);
@@ -266,23 +288,6 @@ export default function IndexDashboard() {
     [doSearch]
   );
 
-  const handleExpandPatterns = useCallback(async () => {
-    setExpanding(true);
-    try {
-      const params = new URLSearchParams({
-        bust: "1",
-        expand: "1",
-        indexName: activeIndexRef.current,
-      });
-      const res = await fetch(`/api/dashboard?${params}`);
-      const data = await res.json();
-      if (!data.error) setDashboard(data);
-    } catch (err) {
-      console.error("Expansion failed:", err);
-    } finally {
-      setExpanding(false);
-    }
-  }, []);
 
   const handleSelect = useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -563,40 +568,18 @@ export default function IndexDashboard() {
           <Separator />
 
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
-                  <Brain className="size-4 text-sky-400" />
-                </div>
-                <h2 className="text-lg font-semibold tracking-tight">
-                  Agent Behavior Patterns
-                </h2>
-                {dashboard?.expanded && (
-                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
-                    Expanded
-                  </span>
-                )}
+            <div className="flex items-center gap-2">
+              <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
+                <Brain className="size-4 text-sky-400" />
               </div>
-              {dashboard && !dashboard.expanded && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExpandPatterns}
-                  disabled={expanding}
-                  className="gap-1.5 text-xs"
-                >
-                  {expanding ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      Expanding...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="size-3.5" />
-                      Discover more
-                    </>
-                  )}
-                </Button>
+              <h2 className="text-lg font-semibold tracking-tight">
+                Agent Behavior Patterns
+              </h2>
+              {expanding && (
+                <span className="flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-400">
+                  <Loader2 className="size-3 animate-spin" />
+                  Discovering more…
+                </span>
               )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
