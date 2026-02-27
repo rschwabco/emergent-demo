@@ -38,8 +38,8 @@ export interface RawHit {
   traceId: string;
   turnIndex: number;
   chunkIndex: number;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
   tags: string[];
 }
 
@@ -64,8 +64,8 @@ function parseHitFields(fields: Record<string, unknown>): Omit<RawHit, "id" | "s
     traceId,
     turnIndex: (fields.turn_index as number) ?? 0,
     chunkIndex: (fields.chunk_index as number) ?? 0,
-    project: (fields.project as string) || parts[0] || "",
-    issue: (fields.title as string) || parts[1] || "",
+    framework: (fields.project as string) || parts[0] || "",
+    trace: (fields.title as string) || parts[1] || "",
     tags,
   };
 }
@@ -152,8 +152,8 @@ export async function keywordSearch(
       traceId,
       turnIndex: (match[".turn_index"] as number) ?? 0,
       chunkIndex: (match[".content.chunk_index"] as number) ?? 0,
-      project: (match[".project"] as string) || parts[0] || "",
-      issue: (match[".title"] as string) || parts[1] || "",
+      framework: (match[".project"] as string) || parts[0] || "",
+      trace: (match[".title"] as string) || parts[1] || "",
       tags,
     };
   });
@@ -301,11 +301,11 @@ export async function rerankHits(
 
 export function buildFilter(filters?: {
   role?: string;
-  project?: string;
+  framework?: string;
 }): Record<string, unknown> {
   const filter: Record<string, unknown> = {};
   if (filters?.role) filter.role = { $eq: filters.role };
-  if (filters?.project)
-    filter.trace_id = { $regex: `^${filters.project}__` };
+  if (filters?.framework)
+    filter.trace_id = { $regex: `^${filters.framework}__` };
   return filter;
 }

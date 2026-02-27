@@ -3,7 +3,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, FolderOpen } from "lucide-react";
 
-const PROJECT_COLORS: Record<string, { dot: string; text: string }> = {
+const FRAMEWORK_COLORS: Record<string, { dot: string; text: string }> = {
   django:         { dot: "bg-emerald-500", text: "text-emerald-400" },
   pallets:        { dot: "bg-teal-500",    text: "text-teal-400" },
   "scikit-learn": { dot: "bg-sky-500",     text: "text-sky-400" },
@@ -19,7 +19,7 @@ const PROJECT_COLORS: Record<string, { dot: string; text: string }> = {
 
 const DEFAULT_COLOR = { dot: "bg-muted-foreground", text: "text-muted-foreground" };
 
-interface ProjectHit {
+interface FrameworkHit {
   id: unknown;
   score: unknown;
   chunkText: string;
@@ -27,26 +27,26 @@ interface ProjectHit {
   traceId: string;
   turnIndex: number;
   chunkIndex: number;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
 }
 
-export interface ProjectData {
+export interface FrameworkData {
   name: string;
   narrative: string;
   topBehaviors: string[];
   hitCount: number;
-  topHit: ProjectHit;
+  topHit: FrameworkHit;
 }
 
-export function ProjectBreakdown({
-  projects,
-  onProjectClick,
+export function FrameworkBreakdown({
+  frameworks,
+  onFrameworkClick,
 }: {
-  projects: ProjectData[];
-  onProjectClick?: (projectName: string) => void;
+  frameworks: FrameworkData[];
+  onFrameworkClick?: (frameworkName: string) => void;
 }) {
-  if (projects.length === 0) return null;
+  if (frameworks.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,24 +55,24 @@ export function ProjectBreakdown({
           <FolderOpen className="size-4 text-emerald-400" />
         </div>
         <h2 className="text-lg font-semibold tracking-tight">
-          By Project
+          By Framework
         </h2>
       </div>
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {projects.map((project) => {
-          const colors = PROJECT_COLORS[project.name] ?? DEFAULT_COLOR;
+        {frameworks.map((framework) => {
+          const colors = FRAMEWORK_COLORS[framework.name] ?? DEFAULT_COLOR;
           return (
             <button
-              key={project.name}
-              onClick={() => onProjectClick?.(project.name)}
+              key={framework.name}
+              onClick={() => onFrameworkClick?.(framework.name)}
               className="group flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-all hover:bg-white/[0.03] dark:hover:bg-white/[0.04] hover:shadow-md"
             >
               <span className={`size-2.5 shrink-0 rounded-full ${colors.dot}`} />
               <span className={`flex-1 text-sm font-medium capitalize ${colors.text}`}>
-                {project.name}
+                {framework.name}
               </span>
               <span className="text-xs tabular-nums text-muted-foreground">
-                {project.hitCount}
+                {framework.hitCount}
               </span>
               <ArrowRight className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
             </button>
@@ -83,7 +83,7 @@ export function ProjectBreakdown({
   );
 }
 
-export function ProjectBreakdownSkeleton() {
+export function FrameworkBreakdownSkeleton() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">

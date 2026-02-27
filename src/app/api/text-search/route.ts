@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const { query, topK = 10, filters } = body as {
       query: string;
       topK?: number;
-      filters?: { role?: string; project?: string };
+      filters?: { role?: string; framework?: string };
     };
 
     if (!query?.trim()) {
@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
     if (filters?.role) {
       filter[".role"] = { $eq: filters.role };
     }
-    if (filters?.project) {
-      filter[".trace_id"] = { $regex: `^${filters.project}__` };
+    if (filters?.framework) {
+      filter[".trace_id"] = { $regex: `^${filters.framework}__` };
     }
 
     const res = await fetch(
@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
         traceId,
         turnIndex: match[".turn_index"],
         chunkIndex: match[".content.chunk_index"],
-        project: parts[0],
-        issue: parts[1],
+        framework: parts[0],
+        trace: parts[1],
         tags: Array.isArray(rawTags) ? rawTags : [],
       };
     });

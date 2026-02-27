@@ -11,17 +11,13 @@ import {
   type BehaviorData,
 } from "@/components/behavior-card";
 import {
-  DashboardStats,
-  DashboardStatsSkeleton,
-} from "@/components/dashboard-stats";
-import {
   CrossCuttingInsights,
   CrossCuttingInsightsSkeleton,
 } from "@/components/cross-cutting-insights";
 import {
-  ProjectBreakdown,
-  ProjectBreakdownSkeleton,
-  type ProjectData,
+  FrameworkBreakdown,
+  FrameworkBreakdownSkeleton,
+  type FrameworkData,
 } from "@/components/project-breakdown";
 import {
   RoleDistribution,
@@ -50,13 +46,14 @@ import {
 } from "@/components/ui/dialog";
 import { ArrowLeft, BarChart3, Brain, Loader2, Upload, Database, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { WalkthroughProvider, WalkthroughTrigger } from "@/components/walkthrough";
 
 interface DashboardData {
   totalChunks: number;
   expanded: boolean;
   crossCuttingInsights: string[];
   behaviors: BehaviorData[];
-  projects: ProjectData[];
+  frameworks?: FrameworkData[];
   roleDistribution: Record<string, number>;
 }
 
@@ -66,6 +63,11 @@ interface PineconeIndex {
   dimension: number;
   status: { ready: boolean };
   host: string;
+}
+
+function formatNumber(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  return n.toLocaleString();
 }
 
 export default function IndexDashboard() {
@@ -276,11 +278,11 @@ export default function IndexDashboard() {
     []
   );
 
-  const handleProjectClick = useCallback(
-    (projectName: string) => {
+  const handleFrameworkClick = useCallback(
+    (frameworkName: string) => {
       const broadQuery = "debugging testing code changes error handling";
       setSimilarTo(null);
-      setFacetSelection({ project: new Set([projectName]) });
+      setFacetSelection({ framework: new Set([frameworkName]) });
       setQuery(broadQuery);
       doSearch(broadQuery);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -355,6 +357,7 @@ export default function IndexDashboard() {
   const showResults = searched;
 
   return (
+    <WalkthroughProvider>
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
@@ -364,19 +367,26 @@ export default function IndexDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={activeIndex} onValueChange={handleIndexChange}>
-            <SelectTrigger className="w-[220px]">
-              <Database className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <SelectValue placeholder="Select index" />
-            </SelectTrigger>
-            <SelectContent>
-              {indexes.map((idx) => (
-                <SelectItem key={idx.name} value={idx.name}>
-                  {idx.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div data-tour="index-selector" className="flex items-center gap-2">
+            <Select value={activeIndex} onValueChange={handleIndexChange}>
+              <SelectTrigger className="w-[220px]">
+                <Database className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <SelectValue placeholder="Select index" />
+              </SelectTrigger>
+              <SelectContent>
+                {indexes.map((idx) => (
+                  <SelectItem key={idx.name} value={idx.name}>
+                    {idx.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {dashboard && (
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                {formatNumber(dashboard.totalChunks)} chunks
+              </span>
+            )}
+          </div>
           {shiftHeld && (
             <Button
               variant="outline"
@@ -388,18 +398,21 @@ export default function IndexDashboard() {
               Delete Index
             </Button>
           )}
-          <Link href="/compare">
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <BarChart3 className="h-3.5 w-3.5" />
-              Compare
-            </Button>
-          </Link>
-          <Link href="/upload">
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <Upload className="h-3.5 w-3.5" />
-              Upload
-            </Button>
-          </Link>
+          <div data-tour="actions" className="flex items-center gap-2">
+            <Link href="/compare">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Compare
+              </Button>
+            </Link>
+            <Link href="/upload">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Upload className="h-3.5 w-3.5" />
+                Upload
+              </Button>
+            </Link>
+          </div>
+          <WalkthroughTrigger />
         </div>
       </header>
 
@@ -445,22 +458,26 @@ export default function IndexDashboard() {
       </Dialog>
 
       <div className="flex flex-col gap-3">
-        <SearchBar
-          query={query}
-          onQueryChange={setQuery}
-          onSearch={handleSearch}
-          onSuggestedQuery={handleSuggestedQuery}
-          loading={loading}
-          showSuggestions={!showResults}
-        />
-        <FacetPanel
-          hits={enrichedFacetHits}
-          selection={facetSelection}
-          onSelectionChange={setFacetSelection}
-          {...(activeIndex !== "agent-traces-semantic" && {
-            hiddenFacets: ["project"],
-          })}
-        />
+        <div data-tour="search-bar">
+          <SearchBar
+            query={query}
+            onQueryChange={setQuery}
+            onSearch={handleSearch}
+            onSuggestedQuery={handleSuggestedQuery}
+            loading={loading}
+            showSuggestions={!showResults}
+          />
+        </div>
+        <div data-tour="facet-panel">
+          <FacetPanel
+            hits={enrichedFacetHits}
+            selection={facetSelection}
+            onSelectionChange={setFacetSelection}
+            {...(activeIndex !== "agent-traces-semantic" && {
+              hiddenFacets: ["framework"],
+            })}
+          />
+        </div>
       </div>
 
       {showResults && (
@@ -500,7 +517,7 @@ export default function IndexDashboard() {
               {similarTo.chunkText}
             </p>
             <p className="text-muted-foreground mt-1 text-[11px]">
-              from {similarTo.project}/{similarTo.issue} &middot; turn{" "}
+              from {similarTo.framework}/{similarTo.trace} &middot; turn{" "}
               {similarTo.turnIndex}
             </p>
           </div>
@@ -555,19 +572,7 @@ export default function IndexDashboard() {
             <CrossCuttingInsights insights={dashboard.crossCuttingInsights} />
           ) : null}
 
-          {dashboardLoading ? (
-            <DashboardStatsSkeleton />
-          ) : dashboard ? (
-            <DashboardStats
-              totalChunks={dashboard.totalChunks}
-              projectCount={dashboard.projects.length > 0 ? dashboard.projects.length : undefined}
-              behaviorCount={dashboard.behaviors.length}
-            />
-          ) : null}
-
-          <Separator />
-
-          <div className="flex flex-col gap-4">
+          <div data-tour="behavior-patterns" className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
               <div className="bg-sky-500/10 flex size-7 items-center justify-center rounded-lg">
                 <Brain className="size-4 text-sky-400" />
@@ -602,9 +607,9 @@ export default function IndexDashboard() {
               <Separator />
 
               {dashboardLoading ? (
-                <ProjectBreakdownSkeleton />
-              ) : dashboard?.projects ? (
-                <ProjectBreakdown projects={dashboard.projects} onProjectClick={handleProjectClick} />
+                <FrameworkBreakdownSkeleton />
+              ) : dashboard?.frameworks ? (
+                <FrameworkBreakdown frameworks={dashboard.frameworks} onFrameworkClick={handleFrameworkClick} />
               ) : null}
             </>
           )}
@@ -621,5 +626,6 @@ export default function IndexDashboard() {
 
       <SummaryJobTracker />
     </div>
+    </WalkthroughProvider>
   );
 }

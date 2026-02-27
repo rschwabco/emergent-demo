@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     const { query, topK = 10, filters, field, indexName, namespace } = body as {
       query: string;
       topK?: number;
-      filters?: { role?: string; project?: string };
+      filters?: { role?: string; framework?: string };
       field?: string;
       indexName?: string;
       namespace?: string;
@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
     if (filters?.role) {
       filter[".role"] = { $eq: filters.role };
     }
-    if (filters?.project) {
-      filter[".trace_id"] = { $regex: `^${filters.project}__` };
+    if (filters?.framework) {
+      filter[".trace_id"] = { $regex: `^${filters.framework}__` };
     }
 
     const requestBody: Record<string, unknown> = {
@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
           traceId,
           turnIndex: match[".turn_index"] ?? 0,
           chunkIndex: match[".content.chunk_index"] ?? 0,
-          project: (match[".project"] as string) || parts[0] || "",
-          issue: (match[".title"] as string) || parts[1] || "",
+          framework: (match[".project"] as string) || parts[0] || "",
+          trace: (match[".title"] as string) || parts[1] || "",
           tags: [],
         };
       }

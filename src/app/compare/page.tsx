@@ -36,8 +36,8 @@ interface Hit {
   traceId: string;
   turnIndex: number;
   chunkIndex: number;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
   tags: string[];
 }
 
@@ -199,7 +199,7 @@ function HitCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <RoleBadge role={hit.role} />
             <span className="text-xs font-medium truncate">
-              {hit.project}/{hit.issue}
+              {hit.framework}/{hit.trace}
             </span>
             <span className="text-muted-foreground text-[11px] tabular-nums">
               turn {hit.turnIndex}

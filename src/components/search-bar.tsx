@@ -53,8 +53,8 @@ export function SearchBar({
         </Button>
       </form>
       {showSuggestions && onSuggestedQuery && (
-        <div className="flex flex-wrap gap-1.5">
-          <span className="text-muted-foreground self-center text-[11px]">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-muted-foreground/60 self-center text-[11px] italic">
             Try:
           </span>
           {SUGGESTED_QUERIES.map((sq) => (
@@ -63,7 +63,7 @@ export function SearchBar({
               type="button"
               disabled={loading}
               onClick={() => onSuggestedQuery(sq)}
-              className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-50"
+              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent rounded-full bg-muted/50 px-2.5 py-0.5 text-[11px] transition-colors disabled:opacity-50"
             >
               {sq}
             </button>

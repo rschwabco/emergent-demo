@@ -55,8 +55,8 @@ export interface SearchHit {
   traceId: string;
   turnIndex: number;
   chunkIndex: number;
-  project: string;
-  issue: string;
+  framework: string;
+  trace: string;
   tags: string[];
   sources?: string[];
   semanticRank?: number | null;
@@ -270,7 +270,7 @@ function ResultCard({
           />
           <RoleBadge role={hit.role} />
           <CardTitle className="text-sm">
-            {hit.project}/{hit.issue}
+            {hit.framework}/{hit.trace}
           </CardTitle>
           <span className="ml-auto flex items-center gap-1.5">
             <SourceBadges hit={hit} />

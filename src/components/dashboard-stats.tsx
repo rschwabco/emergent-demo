@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react";
 
 interface DashboardStatsProps {
   totalChunks: number;
-  projectCount?: number;
+  frameworkCount?: number;
   behaviorCount: number;
 }
 
@@ -26,12 +26,12 @@ interface StatConfig {
 
 export function DashboardStats({
   totalChunks,
-  projectCount,
+  frameworkCount,
   behaviorCount,
 }: DashboardStatsProps) {
   const stats: StatConfig[] = [
     { label: "Chunks Indexed", value: formatNumber(totalChunks), icon: Database, color: "text-sky-400", bg: "bg-sky-500/10" },
-    ...(projectCount ? [{ label: "Projects", value: String(projectCount), icon: FolderOpen, color: "text-emerald-400", bg: "bg-emerald-500/10" }] : []),
+    ...(frameworkCount ? [{ label: "Frameworks", value: String(frameworkCount), icon: FolderOpen, color: "text-emerald-400", bg: "bg-emerald-500/10" }] : []),
     { label: "Behavior Patterns", value: String(behaviorCount), icon: Layers, color: "text-violet-400", bg: "bg-violet-500/10" },
   ];
 

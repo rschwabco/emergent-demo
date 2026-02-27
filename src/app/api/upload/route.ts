@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
         const file = formData.get("file") as File | null;
         const indexName = formData.get("indexName") as string | null;
         const namespace = (formData.get("namespace") as string) || "";
-        const projectName = (formData.get("projectName") as string) || "";
+        const frameworkName = (formData.get("frameworkName") as string) || "";
         const chunkSize = Number(formData.get("chunkSize")) || CHUNK_SIZE;
         const chunkOverlap =
           Number(formData.get("chunkOverlap")) || CHUNK_OVERLAP;
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
                   chunk_index: chunkIdx,
                   total_chunks: 0,
                   source: "jsonl_upload",
-                  ...(projectName && { project: projectName }),
+                  ...(frameworkName && { project: frameworkName }),
                 };
                 if (doc.metadata) {
                   for (const [key, value] of Object.entries(doc.metadata)) {
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
                 chunk_index: i,
                 total_chunks: chunks.length,
                 source: "jsonl_upload",
-                ...(projectName && { project: projectName }),
+                ...(frameworkName && { project: frameworkName }),
               };
               if (doc.metadata) {
                 for (const [key, value] of Object.entries(doc.metadata)) {

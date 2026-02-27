@@ -1,6 +1,6 @@
 # Spec: Faceted Filtering & Optimistic Tag Updates
 
-**Goal:** Port features from `emergent-demo` that are absent in this project. These are: a badge-based facet panel with dynamic facets, optimistic tag mutation with server-authoritative rollback, issue-level filtering, and a text-selection guard on result card clicks.
+**Goal:** Port features from `emergent-demo` that are absent in this project. These are: a badge-based facet panel with dynamic facets, optimistic tag mutation with server-authoritative rollback, trace-level filtering, and a text-selection guard on result card clicks.
 
 ---
 
@@ -8,11 +8,11 @@
 
 ### Problem
 
-The current `FilterPanel` uses two `<Select>` dropdowns (role, project). This limits filtering in several ways:
+The current `FilterPanel` uses two `<Select>` dropdowns (role, framework). This limits filtering in several ways:
 
 - Only one value can be selected per dimension (no multi-select).
 - Users cannot see how many results match each filter value.
-- No way to filter by issue, tags, or other metadata dimensions.
+- No way to filter by trace, tags, or other metadata dimensions.
 - Filters are disconnected from results — users must guess which values are useful.
 
 ### Solution
@@ -41,13 +41,13 @@ interface Facet {
 |-------|-----|------|-------------|
 | Tags | `tags` | `array` | *(derived from hits)* |
 | Role | `role` | `string` | `system`, `user`, `assistant`, `tool` |
-| Project | `project` | `string` | `django`, `scikit-learn`, `matplotlib`, `pytest-dev`, `sympy`, `astropy`, `sphinx-doc`, `pallets` |
+| Framework | `framework` | `string` | `django`, `scikit-learn`, `matplotlib`, `pytest-dev`, `sympy`, `astropy`, `sphinx-doc`, `pallets` |
 
 **Dynamic facets** only render when the current result set contains 2+ distinct values for that dimension. They disappear when irrelevant.
 
 | Facet | Key | Type |
 |-------|-----|------|
-| Issue | `issue` | `string` |
+| Trace | `trace` | `string` |
 
 #### Component API
 
@@ -103,14 +103,14 @@ Returns `true` if any set in the selection record has `.size > 0`.
 
 ### Integration into IndexDashboard
 
-1. Remove the `role` and `project` state variables and their `useRef` counterparts.
+1. Remove the `role` and `framework` state variables and their `useRef` counterparts.
 2. Add `facetSelection` / `setFacetSelection` state (`FacetSelection`, initialized to `{}`).
 3. Replace `<FilterPanel>` with `<FacetPanel hits={...} selection={facetSelection} onSelectionChange={setFacetSelection} />`.
 4. On the landing page (no search), pass the behavior card sample hits as the facet source (so users see counts from the dashboard data).
 5. On search, pass the raw `hits` array as the facet source.
 6. Compute `displayHits` by applying `applyFacetFilters(hits, facetSelection)` via `useMemo`.
 7. Reset `facetSelection` to `{}` on every new search.
-8. Update `doSearch` to no longer pass `role`/`project` as server-side filters. Instead, all filtering happens client-side via the facet panel. This simplifies the API call and makes filter changes instant (no re-fetch).
+8. Update `doSearch` to no longer pass `role`/`framework` as server-side filters. Instead, all filtering happens client-side via the facet panel. This simplifies the API call and makes filter changes instant (no re-fetch).
 
 ### Interaction with TagFilter
 
@@ -122,11 +122,11 @@ These serve different purposes:
 
 Both should coexist. The FacetPanel Tags row filters within current results; TagFilter replaces the result set entirely.
 
-### Showing Projects Conditionally
+### Showing Frameworks Conditionally
 
-The current `FilterPanel` only shows the project dropdown when `activeIndex === "agent-traces-semantic"`. The `FacetPanel` should adopt the same behavior: the "Project" pinned facet should only appear when the active index is `agent-traces-semantic`. Pass an optional `indexName` prop to `FacetPanel`, or conditionally include the Project facet in `PINNED_FACETS` based on the index.
+The current `FilterPanel` only shows the framework dropdown when `activeIndex === "agent-traces-semantic"`. The `FacetPanel` should adopt the same behavior: the "Framework" pinned facet should only appear when the active index is `agent-traces-semantic`. Pass an optional `indexName` prop to `FacetPanel`, or conditionally include the Framework facet in `PINNED_FACETS` based on the index.
 
-Recommended approach: accept an optional `hiddenFacets?: string[]` prop. When the index is not `agent-traces-semantic`, pass `hiddenFacets={["project"]}`.
+Recommended approach: accept an optional `hiddenFacets?: string[]` prop. When the index is not `agent-traces-semantic`, pass `hiddenFacets={["framework"]}`.
 
 ---
 
@@ -198,17 +198,17 @@ The existing localStorage persistence continues as-is. On rollback, the state up
 
 ---
 
-## 3. Issue-Level Filtering (via FacetPanel)
+## 3. Trace-Level Filtering (via FacetPanel)
 
 ### Problem
 
-The `SearchHit` type already includes an `issue` field (extracted from `traceId` in the format `{project}__{issue}.json`), but there is no UI to filter by issue.
+The `SearchHit` type already includes a `trace` field (extracted from `traceId` in the format `{framework}__{trace}.json`), but there is no UI to filter by trace.
 
 ### Solution
 
-This is handled by the FacetPanel's dynamic facets (Section 1). The `issue` field is registered as a dynamic facet that only appears when results contain 2+ distinct issues.
+This is handled by the FacetPanel's dynamic facets (Section 1). The `trace` field is registered as a dynamic facet that only appears when results contain 2+ distinct traces.
 
-No additional API or data changes are needed — the `issue` field is already present on every `SearchHit`.
+No additional API or data changes are needed — the `trace` field is already present on every `SearchHit`.
 
 ---
 
@@ -249,7 +249,7 @@ This is a single two-line addition at the top of the existing handler.
 |------|--------|-------------|
 | `src/components/facet-panel.tsx` | **Create** | New FacetPanel component with `buildFacets`, `applyFacetFilters`, `hasActiveFacets` |
 | `src/components/filter-panel.tsx` | **Delete** (or keep for reference) | Replaced by FacetPanel |
-| `src/app/index/[indexName]/page.tsx` | **Modify** | Replace FilterPanel with FacetPanel; remove `role`/`project` state; add `facetSelection` state; update `displayHits` to use `applyFacetFilters`; reset facets on new search |
+| `src/app/index/[indexName]/page.tsx` | **Modify** | Replace FilterPanel with FacetPanel; remove `role`/`framework` state; add `facetSelection` state; update `displayHits` to use `applyFacetFilters`; reset facets on new search |
 | `src/hooks/use-tag-store.ts` | **Modify** | Add rollback logic to `assignTag` and `unassignTag`; change `persistToPinecone` to return `Promise<boolean>` |
 | `src/components/search-results.tsx` | **Modify** | Add `window.getSelection()` guard in `handleCardClick` |
 

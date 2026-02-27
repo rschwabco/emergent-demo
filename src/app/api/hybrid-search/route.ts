@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     } = body as {
       query: string;
       topK?: number;
-      filters?: { role?: string; project?: string };
+      filters?: { role?: string; framework?: string };
       rerank?: boolean;
       indexName?: string;
       keywordIndexName?: string;

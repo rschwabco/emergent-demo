@@ -16,7 +16,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Check, ChevronsUpDown, X } from "lucide-react";
+import { Check, ChevronsUpDown, Filter, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SearchHit } from "@/components/search-results";
 
@@ -52,8 +52,8 @@ const PINNED_FACETS: FacetDef[] = [
     knownValues: ["system", "user", "assistant", "tool"],
   },
   {
-    key: "project",
-    label: "Project",
+    key: "framework",
+    label: "Framework",
     type: "string",
     knownValues: [
       "django",
@@ -69,7 +69,7 @@ const PINNED_FACETS: FacetDef[] = [
 ];
 
 const DYNAMIC_FACETS: FacetDef[] = [
-  { key: "issue", label: "Issue", type: "string", dynamic: true, searchable: true },
+  { key: "trace", label: "Trace", type: "string", dynamic: true, searchable: true },
 ];
 
 function getHitValue(hit: SearchHit, key: string): string | string[] | undefined {
@@ -199,7 +199,7 @@ function SearchableFacetRow({
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
+      <span className="w-16 shrink-0 text-[11px] font-medium text-muted-foreground">
         {facet.label}
       </span>
       <Popover open={open} onOpenChange={setOpen}>
@@ -211,7 +211,7 @@ function SearchableFacetRow({
           >
             {selected.size > 0
               ? `${selected.size} selected`
-              : `${facet.buckets.length} issues`}
+              : `${facet.buckets.length} traces`}
             <ChevronsUpDown className="size-3 opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -298,67 +298,77 @@ export function FacetPanel({
   if (facets.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2">
-      {facets.map((facet) => {
-        const selected = selection[facet.key] ?? new Set<string>();
-
-        if (facet.searchable) {
-          return (
-            <SearchableFacetRow
-              key={facet.key}
-              facet={facet}
-              selected={selected}
-              onToggle={(value) => toggle(facet.key, value)}
-            />
-          );
-        }
-
-        return (
-          <div key={facet.key} className="flex items-center gap-2 flex-wrap">
-            <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
-              {facet.label}
-            </span>
-            <div className="flex flex-wrap items-center gap-1">
-              {facet.buckets.map((bucket) => {
-                const isSelected = selected.has(bucket.value);
-                return (
-                  <Badge
-                    key={bucket.value}
-                    variant={isSelected ? "default" : "outline"}
-                    className={cn(
-                      "cursor-pointer select-none text-[11px]",
-                      !isSelected && "hover:bg-accent",
-                      !isSelected && bucket.count === 0 && "opacity-40"
-                    )}
-                    onClick={() => toggle(facet.key, bucket.value)}
-                  >
-                    {bucket.value}
-                    <span
-                      className={cn(
-                        "tabular-nums",
-                        isSelected ? "opacity-75" : "text-muted-foreground"
-                      )}
-                    >
-                      {bucket.count}
-                    </span>
-                  </Badge>
-                );
-              })}
-            </div>
+    <div className="rounded-lg border bg-card/50 px-4 py-3">
+      <div className="mb-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="flex size-6 items-center justify-center rounded-md bg-muted">
+            <Filter className="size-3 text-muted-foreground" />
           </div>
-        );
-      })}
-      {active && (
-        <Button
-          variant="ghost"
-          size="xs"
-          className="self-start gap-1 text-muted-foreground text-[11px]"
-          onClick={clearAll}
-        >
-          <X className="size-3" />
-          Clear filters
-        </Button>
-      )}
+          <span className="text-xs font-medium text-muted-foreground">Filters</span>
+        </div>
+        {active && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="gap-1 text-muted-foreground text-[11px] h-6"
+            onClick={clearAll}
+          >
+            <X className="size-3" />
+            Clear all
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        {facets.map((facet) => {
+          const selected = selection[facet.key] ?? new Set<string>();
+
+          if (facet.searchable) {
+            return (
+              <SearchableFacetRow
+                key={facet.key}
+                facet={facet}
+                selected={selected}
+                onToggle={(value) => toggle(facet.key, value)}
+              />
+            );
+          }
+
+          return (
+            <div key={facet.key} className="flex items-center gap-2 flex-wrap">
+              <span className="w-16 shrink-0 text-[11px] font-medium text-muted-foreground">
+                {facet.label}
+              </span>
+              <div className="flex flex-wrap items-center gap-1">
+                {facet.buckets.map((bucket) => {
+                  const isSelected = selected.has(bucket.value);
+                  return (
+                    <Badge
+                      key={bucket.value}
+                      variant={isSelected ? "default" : "outline"}
+                      className={cn(
+                        "cursor-pointer select-none text-[11px]",
+                        !isSelected && "hover:bg-accent",
+                        !isSelected && bucket.count === 0 && "opacity-40"
+                      )}
+                      onClick={() => toggle(facet.key, bucket.value)}
+                    >
+                      {bucket.value}
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          isSelected ? "opacity-75" : "text-muted-foreground"
+                        )}
+                      >
+                        {bucket.count}
+                      </span>
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

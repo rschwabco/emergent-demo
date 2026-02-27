@@ -16,7 +16,7 @@ import {
 
 const REWRITE_MODEL = "gpt-4o-mini";
 
-const REWRITE_PROMPT = `You rewrite search queries for a corpus of AI coding agent conversation traces from SWE-bench (projects: django, scikit-learn, matplotlib, pytest-dev, sympy, astropy, sphinx-doc, pallets).
+const REWRITE_PROMPT = `You rewrite search queries for a corpus of AI coding agent conversation traces from SWE-bench (frameworks: django, scikit-learn, matplotlib, pytest-dev, sympy, astropy, sphinx-doc, pallets).
 
 Given a query, produce 2 alternative phrasings that would retrieve complementary results. Focus on vocabulary variation, synonyms, and different angles of the same intent.
 
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     } = body as {
       query: string;
       topK?: number;
-      filters?: { role?: string; project?: string };
+      filters?: { role?: string; framework?: string };
       indexName?: string;
       keywordIndexName?: string;
       namespace?: string;
